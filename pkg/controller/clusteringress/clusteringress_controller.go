@@ -2,30 +2,23 @@ package clusteringress
 
 import (
 	"context"
+	"reflect"
 
-	networkingv1alpha1 "github.com/bbrowning/knative-openshift-ingress/pkg/apis/networking/v1alpha1"
-
-	corev1 "k8s.io/api/core/v1"
+	"github.com/bbrowning/knative-openshift-ingress/pkg/controller/clusteringress/resources"
+	"github.com/knative/pkg/logging"
+	networkingv1alpha1 "github.com/knative/serving/pkg/apis/networking/v1alpha1"
+	routev1 "github.com/openshift/api/route/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
-
-var log = logf.Log.WithName("controller_clusteringress")
-
-/**
-* USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
-* business logic.  Delete these comments after modifying this file.*
- */
 
 // Add creates a new ClusterIngress Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -52,9 +45,9 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// TODO(user): Modify this to be the types you create that are owned by the primary resource
-	// Watch for changes to secondary resource Pods and requeue the owner ClusterIngress
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
+	// Watch for changes to secondary resource Routes and requeue the
+	// owner ClusterIngress
+	err = c.Watch(&source.Kind{Type: &routev1.Route{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &networkingv1alpha1.ClusterIngress{},
 	})
@@ -75,20 +68,20 @@ type ReconcileClusterIngress struct {
 	scheme *runtime.Scheme
 }
 
-// Reconcile reads that state of the cluster for a ClusterIngress object and makes changes based on the state read
-// and what is in the ClusterIngress.Spec
-// TODO(user): Modify this Reconcile function to implement your Controller logic.  This example creates
-// a Pod as an example
+// Reconcile reads that state of the cluster for a ClusterIngress
+// object and makes changes based on the state read and what is in the
+// ClusterIngress.Spec
+//
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileClusterIngress) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling ClusterIngress")
+	ctx := context.TODO()
+	logger := logging.FromContext(ctx)
 
 	// Fetch the ClusterIngress instance
-	instance := &networkingv1alpha1.ClusterIngress{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
+	original := &networkingv1alpha1.ClusterIngress{}
+	err := r.client.Get(context.TODO(), request.NamespacedName, original)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -100,54 +93,102 @@ func (r *ReconcileClusterIngress) Reconcile(request reconcile.Request) (reconcil
 		return reconcile.Result{}, err
 	}
 
-	// Define a new Pod object
-	pod := newPodForCR(instance)
+	if original.Spec.Visibility != networkingv1alpha1.IngressVisibilityExternalIP {
+		// TODO: ensure no Route
+	}
 
-	// Set ClusterIngress instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
+	// Don't modify the informer's copy
+	ci := original.DeepCopy()
+	err = r.reconcile(ctx, ci)
+	if equality.Semantic.DeepEqual(original.Status, ci.Status) {
+		// If we didn't change anything then don't call updateStatus.
+		// This is important because the copy we loaded from the informer's
+		// cache may be stale and we don't want to overwrite a prior update
+		// to status with this stale state.
+	} else if _, err := r.updateStatus(ctx, ci); err != nil {
+		logger.Warnw("Failed to update clusterIngress status", err)
 		return reconcile.Result{}, err
 	}
 
-	// Check if this Pod already exists
-	found := &corev1.Pod{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-		err = r.client.Create(context.TODO(), pod)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Pod created successfully - don't requeue
-		return reconcile.Result{}, nil
-	} else if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
 	return reconcile.Result{}, nil
 }
 
-// newPodForCR returns a busybox pod with the same name/namespace as the cr
-func newPodForCR(cr *networkingv1alpha1.ClusterIngress) *corev1.Pod {
-	labels := map[string]string{
-		"app": cr.Name,
+// Update the Status of the ClusterIngress.  Caller is responsible for checking
+// for semantic differences before calling.
+func (r *ReconcileClusterIngress) updateStatus(ctx context.Context, desired *networkingv1alpha1.ClusterIngress) (*networkingv1alpha1.ClusterIngress, error) {
+	ci := &networkingv1alpha1.ClusterIngress{}
+	err := r.client.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, ci)
+	if err != nil {
+		return nil, err
 	}
-	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Name + "-pod",
-			Namespace: cr.Namespace,
-			Labels:    labels,
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:    "busybox",
-					Image:   "busybox",
-					Command: []string{"sleep", "3600"},
-				},
-			},
-		},
+
+	// If there's nothing to update, just return.
+	if reflect.DeepEqual(ci.Status, desired.Status) {
+		return ci, nil
 	}
+	// Don't modify the informers copy
+	existing := ci.DeepCopy()
+	existing.Status = desired.Status
+	err = r.client.Status().Update(ctx, existing)
+	return existing, err
+}
+
+func (r *ReconcileClusterIngress) reconcile(ctx context.Context, ci *networkingv1alpha1.ClusterIngress) error {
+	logger := logging.FromContext(ctx)
+	if ci.GetDeletionTimestamp() != nil {
+		return r.reconcileDeletion(ctx, ci)
+	}
+
+	logger.Infof("Reconciling clusterIngress :%v", ci)
+	routes, err := resources.MakeRoutes(ci)
+	if err != nil {
+		return err
+	}
+
+	for _, route := range routes {
+		logger.Infof("Creating/Updating OpenShift Route for host %s", route.Spec.Host)
+		if err := r.reconcileRoute(ctx, ci, route); err != nil {
+			return err
+		}
+	}
+
+	logger.Info("ClusterIngress successfully synced")
+	return nil
+}
+
+func (r *ReconcileClusterIngress) reconcileRoute(ctx context.Context, ci *networkingv1alpha1.ClusterIngress, desired *routev1.Route) error {
+	logger := logging.FromContext(ctx)
+
+	// Check if this Route already exists
+	route := &routev1.Route{}
+	err := r.client.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, route)
+	if err != nil && errors.IsNotFound(err) {
+		err = r.client.Create(ctx, desired)
+		if err != nil {
+			logger.Errorw("Failed to create OpenShift Route %q in namespace %q", desired.Name, desired.Namespace, err)
+			return err
+		}
+		logger.Infof("Created OpenShift Route %q in namespace %q", desired.Name, desired.Namespace)
+	} else if err != nil {
+		return err
+	} else if !equality.Semantic.DeepEqual(route.Spec, desired.Spec) {
+		// Don't modify the informers copy
+		existing := route.DeepCopy()
+		existing.Spec = desired.Spec
+		err = r.client.Update(ctx, existing)
+		if err != nil {
+			logger.Errorw("Failed to update OpenShift Route %q in namespace %q", desired.Name, desired.Namespace, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *ReconcileClusterIngress) reconcileDeletion(ctx context.Context, ci *networkingv1alpha1.ClusterIngress) error {
+	// TODO: something with a finalizer?  We're using owner refs for
+	// now, but really shouldn't be using owner refs from
+	// cluster-scoped ClusterIngress to a namespace-scoped K8s
+	// Service.
+	return nil
 }

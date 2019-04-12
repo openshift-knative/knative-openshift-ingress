@@ -8,6 +8,8 @@ import (
 	"runtime"
 
 	"github.com/bbrowning/knative-openshift-ingress/pkg/apis"
+	_ "github.com/bbrowning/knative-openshift-ingress/pkg/apis/networking/v1alpha1"
+	_ "github.com/bbrowning/knative-openshift-ingress/pkg/apis/route/v1"
 	"github.com/bbrowning/knative-openshift-ingress/pkg/controller"
 
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
