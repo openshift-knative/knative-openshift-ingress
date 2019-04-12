@@ -6,10 +6,12 @@ import (
 
 	"github.com/bbrowning/knative-openshift-ingress/pkg/controller/clusteringress/resources"
 	"github.com/knative/pkg/logging"
+	"github.com/knative/serving/pkg/apis/networking"
 	networkingv1alpha1 "github.com/knative/serving/pkg/apis/networking/v1alpha1"
 	routev1 "github.com/openshift/api/route/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -93,10 +95,6 @@ func (r *ReconcileClusterIngress) Reconcile(request reconcile.Request) (reconcil
 		return reconcile.Result{}, err
 	}
 
-	if original.Spec.Visibility != networkingv1alpha1.IngressVisibilityExternalIP {
-		// TODO: ensure no Route
-	}
-
 	// Don't modify the informer's copy
 	ci := original.DeepCopy()
 	err = r.reconcile(ctx, ci)
@@ -140,19 +138,47 @@ func (r *ReconcileClusterIngress) reconcile(ctx context.Context, ci *networkingv
 	}
 
 	logger.Infof("Reconciling clusterIngress :%v", ci)
-	routes, err := resources.MakeRoutes(ci)
-	if err != nil {
-		return err
-	}
 
-	for _, route := range routes {
-		logger.Infof("Creating/Updating OpenShift Route for host %s", route.Spec.Host)
-		if err := r.reconcileRoute(ctx, ci, route); err != nil {
+	exposed := ci.Spec.Visibility == networkingv1alpha1.IngressVisibilityExternalIP
+	if exposed {
+		routes, err := resources.MakeRoutes(ci)
+		if err != nil {
 			return err
 		}
+
+		for _, route := range routes {
+			logger.Infof("Creating/Updating OpenShift Route for host %s", route.Spec.Host)
+			if err := r.reconcileRoute(ctx, ci, route); err != nil {
+				return err
+			}
+		}
+	} else {
+		r.deleteRoutes(ctx, ci)
 	}
 
 	logger.Info("ClusterIngress successfully synced")
+	return nil
+}
+
+func (r *ReconcileClusterIngress) deleteRoutes(ctx context.Context, ci *networkingv1alpha1.ClusterIngress) error {
+	logger := logging.FromContext(ctx)
+	listOpts := &client.ListOptions{
+		LabelSelector: labels.SelectorFromSet(map[string]string{
+			networking.IngressLabelKey: ci.Name,
+		}),
+	}
+	var routeList routev1.RouteList
+	if err := r.client.List(ctx, listOpts, &routeList); err != nil {
+		return err
+	}
+
+	for _, route := range routeList.Items {
+		logger.Infof("Deleting OpenShift Route for host %s", route.Spec.Host)
+		if err := r.client.Delete(ctx, &route); err != nil {
+			return err
+		}
+		logger.Infof("Deleted OpenShift Route %q in namespace %q", route.Name, route.Namespace)
+	}
 	return nil
 }
 
