@@ -55,6 +55,7 @@ rules:
   - routes
   - routes/custom-host
   - routes/status
+  - routes/finalizers
   verbs:
   - "*"
 ---
