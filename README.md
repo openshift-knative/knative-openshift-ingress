@@ -29,7 +29,7 @@ deploy Knative to your OpenShift 4 cluster. Using that script will
 install Knative via Operators and ensure default values get customized
 for your specific OpenShift 4 environment.
 
-# Deploy the OpenShift Ingress Operator
+## Deploy the OpenShift Ingress Operator
 
 ```shell
 oc apply --filename https://github.com/bbrowning/knative-openshift-ingress/releases/download/v0.0.1/release.yaml
