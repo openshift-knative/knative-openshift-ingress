@@ -13,10 +13,57 @@ handle creating the actual traffic splitting. The default Knative
 install uses Istio's ingressgateway for this out of the box, and that
 is tested to work with this.
 
-# Deploying to OpenShift
+# Installation
+
+## Create an OpenShift 4 cluster
+
+Follow the instructions at https://try.openshift.com/ to create an
+OpenShift 4 cluster. Everything below assumes your cluster is up and
+the `oc` command can successfully authenticate with your cluster.
+
+## Install Knative
+
+Follow the instructions and script at
+https://github.com/openshift-cloud-functions/knative-operators to
+deploy Knative to your OpenShift 4 cluster. Using that script will
+install Knative via Operators and ensure default values get customized
+for your specific OpenShift 4 environment.
+
+# Deploy the OpenShift Ingress Operator
+
 ```shell
 oc apply --filename https://github.com/bbrowning/knative-openshift-ingress/releases/download/v0.0.1/release.yaml
 ```
+
+## Deploy the Knative helloworld-go sample
+
+```shell
+cat <<EOF | kubectl apply -f -
+apiVersion: serving.knative.dev/v1alpha1
+kind: Service
+metadata:
+  name: helloworld-go
+  namespace: default
+spec:
+  runLatest:
+    configuration:
+      revisionTemplate:
+        spec:
+          container:
+            image: gcr.io/knative-samples/helloworld-go
+            env:
+              - name: TARGET
+                value: "Go Sample v1"
+EOF
+```
+
+Wait for the helloworld-go Knative Service to become Ready:
+```shell
+kubectl get ksvc helloworld-go -n default
+```
+
+Copy and paste the `DOMAIN` value for your Knative Service into a web
+browser and confirm that it works.
 
 # Testing changes locally
 
