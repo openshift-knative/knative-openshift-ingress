@@ -13,6 +13,9 @@ handle creating the actual traffic splitting. The default Knative
 install uses Istio's ingressgateway for this out of the box, and that
 is tested to work with this.
 
+# Demo
+<a href="https://vimeo.com/330132153"><img src="docs/video_thumbnail.png" width="400" title="Knative OpenShift Routes Demo"></a>
+
 # Installation
 
 ## Create an OpenShift 4 cluster
