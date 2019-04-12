@@ -15,7 +15,7 @@ is tested to work with this.
 
 # Deploying to OpenShift
 ```shell
-kubectl apply --filename https://github.com/bbrowning/knative-openshift-ingress/releases/download/v0.0.1/release.yaml
+oc apply --filename https://github.com/bbrowning/knative-openshift-ingress/releases/download/v0.0.1/release.yaml
 ```
 
 # Testing changes locally
