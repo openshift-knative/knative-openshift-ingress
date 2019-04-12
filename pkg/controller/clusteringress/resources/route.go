@@ -48,14 +48,16 @@ func makeRoute(ci *networkingv1alpha1.ClusterIngress, host string, index int) (*
 	name := fmt.Sprintf("%s-%d", ci.Name, index)
 	serviceName := ""
 	namespace := ""
-	for _, lbIngress := range ci.Status.LoadBalancer.Ingress {
-		if lbIngress.DomainInternal != "" {
-			// DomainInternal should look something like:
-			// istio-ingressgateway.istio-system.svc.cluster.local
-			parts := strings.Split(lbIngress.DomainInternal, ".")
-			if len(parts) > 2 && parts[2] == "svc" {
-				serviceName = parts[0]
-				namespace = parts[1]
+	if ci.Status.LoadBalancer != nil {
+		for _, lbIngress := range ci.Status.LoadBalancer.Ingress {
+			if lbIngress.DomainInternal != "" {
+				// DomainInternal should look something like:
+				// istio-ingressgateway.istio-system.svc.cluster.local
+				parts := strings.Split(lbIngress.DomainInternal, ".")
+				if len(parts) > 2 && parts[2] == "svc" {
+					serviceName = parts[0]
+					namespace = parts[1]
+				}
 			}
 		}
 	}
