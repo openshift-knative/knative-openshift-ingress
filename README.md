@@ -8,6 +8,11 @@ This allows Knative traffic to get into the cluster via OpenShift's
 routing layer instead of having to come in directly from Istio or some
 other gateway's LoadBalancer IP.
 
+You still need a specific Knative ClusterIngress implementation to
+handle creating the actual traffic splitting. The default Knative
+install uses Istio's ingressgateway for this out of the box, and that
+is tested to work with this.
+
 # Deploying to OpenShift
 ```shell
 kubectl apply --filename https://github.com/bbrowning/knative-openshift-ingress/releases/download/v0.0.1/release.yaml
