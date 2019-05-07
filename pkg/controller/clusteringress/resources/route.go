@@ -11,6 +11,7 @@ import (
 	"github.com/knative/serving/pkg/apis/serving"
 	routev1 "github.com/openshift/api/route/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 // MakeRoutes creates OpenShift Routes from a Knative ClusterIngress
@@ -74,6 +75,9 @@ func makeRoute(ci *networkingv1alpha1.ClusterIngress, host string, index int) (*
 		},
 		Spec: routev1.RouteSpec{
 			Host: host,
+			Port: &routev1.RoutePort{
+				TargetPort: intstr.FromInt(80),
+			},
 			To: routev1.RouteTargetReference{
 				Kind: "Service",
 				Name: serviceName,
