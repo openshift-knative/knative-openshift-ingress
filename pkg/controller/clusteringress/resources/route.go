@@ -17,8 +17,9 @@ import (
 // MakeRoutes creates OpenShift Routes from a Knative ClusterIngress
 func MakeRoutes(ci *networkingv1alpha1.ClusterIngress) ([]*routev1.Route, error) {
 	routes := []*routev1.Route{}
+	routeIndex := 0
 	for _, rule := range ci.Spec.Rules {
-		for i, host := range rule.Hosts {
+		for _, host := range rule.Hosts {
 			// Ignore domains like myksvc.myproject.svc.cluster.local
 			// TODO: This also ignores any top-level vanity domains
 			// like foo.com the user may have set. But, it tackles the
@@ -26,7 +27,8 @@ func MakeRoutes(ci *networkingv1alpha1.ClusterIngress) ([]*routev1.Route, error)
 			// point.
 			parts := strings.Split(host, ".")
 			if len(parts) > 2 && parts[2] != "svc" {
-				route, err := makeRoute(ci, host, i)
+				route, err := makeRoute(ci, host, routeIndex)
+				routeIndex = routeIndex + 1
 				if err != nil {
 					return nil, err
 				}
