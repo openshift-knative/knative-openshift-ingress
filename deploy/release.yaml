@@ -87,7 +87,7 @@ spec:
       serviceAccountName: knative-openshift-ingress
       containers:
         - name: knative-openshift-ingress
-          image: quay.io/bbrowning/knative-openshift-ingress:v0.0.2
+          image: quay.io/bbrowning/knative-openshift-ingress:v0.0.3
           command:
           - knative-openshift-ingress
           imagePullPolicy: Always
