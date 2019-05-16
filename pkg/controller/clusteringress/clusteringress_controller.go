@@ -4,10 +4,10 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/bbrowning/knative-openshift-ingress/pkg/controller/clusteringress/resources"
 	"github.com/knative/pkg/logging"
 	"github.com/knative/serving/pkg/apis/networking"
 	networkingv1alpha1 "github.com/knative/serving/pkg/apis/networking/v1alpha1"
+	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/clusteringress/resources"
 	routev1 "github.com/openshift/api/route/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"

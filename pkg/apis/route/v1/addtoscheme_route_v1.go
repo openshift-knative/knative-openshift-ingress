@@ -1,7 +1,7 @@
 package v1
 
 import (
-	"github.com/bbrowning/knative-openshift-ingress/pkg/apis"
+	"github.com/openshift-knative/knative-openshift-ingress/pkg/apis"
 	routev1 "github.com/openshift/api/route/v1"
 )
 

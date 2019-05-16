@@ -35,7 +35,7 @@ for your specific OpenShift 4 environment.
 ## Deploy the OpenShift Ingress Operator
 
 ```shell
-oc apply --filename https://github.com/bbrowning/knative-openshift-ingress/releases/download/v0.0.3/release.yaml
+oc apply --filename https://github.com/openshift-knative/knative-openshift-ingress/releases/download/v0.0.3/release.yaml
 ```
 
 ## Deploy the Knative helloworld-go sample
@@ -80,11 +80,11 @@ WATCH_NAMESPACE="" go run cmd/manager/main.go
 # Building, pushing, and testing changes
 
 This is how I do it, at least. You'll need to change the repos to ones
-that aren't bbrowning.
+that aren't openshift-knative unless you have permission to push there.
 
 ```shell
-operator-sdk build quay.io/bbrowning/knative-openshift-ingress:v0.0.3
-docker push quay.io/bbrowning/knative-openshift-ingress:v0.0.3
+operator-sdk build quay.io/openshift-knative/knative-openshift-ingress:v0.0.3
+docker push quay.io/openshift-knative/knative-openshift-ingress:v0.0.3
 ```
 
 Update the image in deploy/release.yaml and tag the git repo with the
