@@ -133,6 +133,7 @@ func (r *ReconcileClusterIngress) updateStatus(ctx context.Context, desired *net
 
 func (r *ReconcileClusterIngress) reconcile(ctx context.Context, ci *networkingv1alpha1.ClusterIngress) error {
 	logger := logging.FromContext(ctx)
+
 	if ci.GetDeletionTimestamp() != nil {
 		return r.reconcileDeletion(ctx, ci)
 	}
@@ -201,6 +202,7 @@ func (r *ReconcileClusterIngress) reconcileRoute(ctx context.Context, ci *networ
 		// Don't modify the informers copy
 		existing := route.DeepCopy()
 		existing.Spec = desired.Spec
+		existing.Annotations = desired.Annotations
 		err = r.client.Update(ctx, existing)
 		if err != nil {
 			logger.Errorw("Failed to update OpenShift Route %q in namespace %q", desired.Name, desired.Namespace, err)

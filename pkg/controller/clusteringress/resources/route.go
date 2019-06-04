@@ -14,6 +14,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+const (
+	timeoutAnnotation = "haproxy.router.openshift.io/timeout"
+)
+
 // MakeRoutes creates OpenShift Routes from a Knative ClusterIngress
 func MakeRoutes(ci *networkingv1alpha1.ClusterIngress) ([]*routev1.Route, error) {
 	routes := []*routev1.Route{}
@@ -27,7 +31,7 @@ func MakeRoutes(ci *networkingv1alpha1.ClusterIngress) ([]*routev1.Route, error)
 			// point.
 			parts := strings.Split(host, ".")
 			if len(parts) > 2 && parts[2] != "svc" {
-				route, err := makeRoute(ci, host, routeIndex)
+				route, err := makeRoute(ci, host, routeIndex, rule)
 				routeIndex = routeIndex + 1
 				if err != nil {
 					return nil, err
@@ -40,7 +44,18 @@ func MakeRoutes(ci *networkingv1alpha1.ClusterIngress) ([]*routev1.Route, error)
 	return routes, nil
 }
 
-func makeRoute(ci *networkingv1alpha1.ClusterIngress, host string, index int) (*routev1.Route, error) {
+func makeRoute(ci *networkingv1alpha1.ClusterIngress, host string, index int, rule networkingv1alpha1.ClusterIngressRule) (*routev1.Route, error) {
+	annotations := make(map[string]string)
+
+	if rule.HTTP != nil {
+		for i, _ := range rule.HTTP.Paths {
+			// Supported time units for openshift route annotations are microseconds (us), milliseconds (ms), seconds (s), minutes (m), hours (h), or days (d)
+			// But the timeout value from clusteringress is in xmys(ex: 10m0s) format
+			// So, in order to make openshift route to work converting it into seconds.
+			annotations[timeoutAnnotation] = fmt.Sprintf("%vs", rule.HTTP.Paths[i].Timeout.Duration.Seconds())
+		}
+	}
+
 	labels := make(map[string]string)
 	labels[networking.IngressLabelKey] = ci.Name
 
@@ -74,6 +89,7 @@ func makeRoute(ci *networkingv1alpha1.ClusterIngress, host string, index int) (*
 			Namespace:       namespace,
 			OwnerReferences: []metav1.OwnerReference{*kmeta.NewControllerRef(ci)},
 			Labels:          labels,
+			Annotations:     annotations,
 		},
 		Spec: routev1.RouteSpec{
 			Host: host,
