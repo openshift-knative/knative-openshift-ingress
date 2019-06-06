@@ -14,6 +14,7 @@ rules:
   - ""
   resources:
   - pods
+  - services
   - events
   - configmaps
   verbs:
@@ -55,6 +56,13 @@ rules:
   - routes/finalizers
   verbs:
   - "*"
+- apiGroups:
+  - serving.knative.dev
+  resources:
+  - knativeservings
+  - knativeservings/finalizers
+  verbs:
+  - '*'
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
