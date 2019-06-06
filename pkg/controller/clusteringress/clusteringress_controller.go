@@ -192,7 +192,7 @@ func (r *ReconcileClusterIngress) reconcileRoute(ctx context.Context, ci *networ
 	if err != nil && errors.IsNotFound(err) {
 		err = r.client.Create(ctx, desired)
 		if err != nil {
-			logger.Errorw("Failed to create OpenShift Route %q in namespace %q", desired.Name, desired.Namespace, err)
+			logger.Errorf("Failed to create OpenShift Route %q in namespace %q: %v", desired.Name, desired.Namespace, err)
 			return err
 		}
 		logger.Infof("Created OpenShift Route %q in namespace %q", desired.Name, desired.Namespace)
@@ -205,7 +205,7 @@ func (r *ReconcileClusterIngress) reconcileRoute(ctx context.Context, ci *networ
 		existing.Annotations = desired.Annotations
 		err = r.client.Update(ctx, existing)
 		if err != nil {
-			logger.Errorw("Failed to update OpenShift Route %q in namespace %q", desired.Name, desired.Namespace, err)
+			logger.Errorf("Failed to update OpenShift Route %q in namespace %q: %v", desired.Name, desired.Namespace, err)
 			return err
 		}
 	}
