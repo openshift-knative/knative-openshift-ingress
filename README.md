@@ -35,7 +35,7 @@ for your specific OpenShift 4 environment.
 ## Deploy the OpenShift Ingress Operator
 
 ```shell
-oc apply --filename https://github.com/openshift-knative/knative-openshift-ingress/releases/download/v0.0.5/release.yaml
+oc apply --filename https://github.com/openshift-knative/knative-openshift-ingress/releases/download/v0.0.6/release.yaml
 ```
 
 ## Deploy the Knative helloworld-go sample
@@ -83,8 +83,8 @@ This is how I do it, at least. You'll need to change the repos to ones
 that aren't openshift-knative unless you have permission to push there.
 
 ```shell
-operator-sdk build quay.io/openshift-knative/knative-openshift-ingress:v0.0.5
-docker push quay.io/openshift-knative/knative-openshift-ingress:v0.0.5
+operator-sdk build quay.io/openshift-knative/knative-openshift-ingress:v0.0.6
+docker push quay.io/openshift-knative/knative-openshift-ingress:v0.0.6
 ```
 
 Update the image in deploy/release.yaml and tag the git repo with the
