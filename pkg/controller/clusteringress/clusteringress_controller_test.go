@@ -7,7 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/clusteringress/resources"
+	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/common"
+	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/resources"
 
 	routev1 "github.com/openshift/api/route/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,7 +73,7 @@ func TestClusterIngressController(t *testing.T) {
 	// Create a fake client to mock API calls.
 	cl := fake.NewFakeClient(objs...)
 	// Create a Reconcile ClusterIngress object with the scheme and fake client.
-	r := &ReconcileClusterIngress{client: cl, scheme: s}
+	r := &ReconcileClusterIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
 
 	// Mock request to simulate Reconcile() being called on an event for a
 	// watched resource .

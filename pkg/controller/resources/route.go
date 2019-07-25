@@ -18,11 +18,11 @@ const (
 	TimeoutAnnotation = "haproxy.router.openshift.io/timeout"
 )
 
-// MakeRoutes creates OpenShift Routes from a Knative ClusterIngress
-func MakeRoutes(ci *networkingv1alpha1.ClusterIngress) ([]*routev1.Route, error) {
+// MakeRoutes creates OpenShift Routes from a Knative Ingress
+func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error) {
 	routes := []*routev1.Route{}
 	routeIndex := 0
-	for _, rule := range ci.Spec.Rules {
+	for _, rule := range ci.GetSpec().Rules {
 		for _, host := range rule.Hosts {
 			// Ignore domains like myksvc.myproject.svc.cluster.local
 			// TODO: This also ignores any top-level vanity domains
@@ -44,14 +44,14 @@ func MakeRoutes(ci *networkingv1alpha1.ClusterIngress) ([]*routev1.Route, error)
 	return routes, nil
 }
 
-func makeRoute(ci *networkingv1alpha1.ClusterIngress, host string, index int, rule networkingv1alpha1.IngressRule) (*routev1.Route, error) {
+func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, rule networkingv1alpha1.IngressRule) (*routev1.Route, error) {
 	annotations := make(map[string]string)
 
 	if rule.HTTP != nil {
-		for i, _ := range rule.HTTP.Paths {
+		for i := range rule.HTTP.Paths {
 			if rule.HTTP.Paths[i].Timeout != nil {
 				// Supported time units for openshift route annotations are microseconds (us), milliseconds (ms), seconds (s), minutes (m), hours (h), or days (d)
-				// But the timeout value from clusteringress is in xmys(ex: 10m0s) format
+				// But the timeout value from ingress is in xmys(ex: 10m0s) format
 				// So, in order to make openshift route to work converting it into seconds.
 				annotations[TimeoutAnnotation] = fmt.Sprintf("%vs", rule.HTTP.Paths[i].Timeout.Duration.Seconds())
 			} else {
@@ -65,17 +65,17 @@ func makeRoute(ci *networkingv1alpha1.ClusterIngress, host string, index int, ru
 	}
 
 	labels := make(map[string]string)
-	labels[networking.IngressLabelKey] = ci.Name
+	labels[networking.IngressLabelKey] = ci.GetName()
 
-	ingressLabels := ci.Labels
+	ingressLabels := ci.GetLabels()
 	labels[serving.RouteLabelKey] = ingressLabels[serving.RouteLabelKey]
 	labels[serving.RouteNamespaceLabelKey] = ingressLabels[serving.RouteNamespaceLabelKey]
 
-	name := fmt.Sprintf("%s-%d", ci.Name, index)
+	name := fmt.Sprintf("%s-%d", ci.GetName(), index)
 	serviceName := ""
 	namespace := ""
-	if ci.Status.LoadBalancer != nil {
-		for _, lbIngress := range ci.Status.LoadBalancer.Ingress {
+	if ci.GetStatus().LoadBalancer != nil {
+		for _, lbIngress := range ci.GetStatus().LoadBalancer.Ingress {
 			if lbIngress.DomainInternal != "" {
 				// DomainInternal should look something like:
 				// istio-ingressgateway.istio-system.svc.cluster.local
