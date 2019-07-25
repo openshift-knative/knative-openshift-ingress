@@ -4,15 +4,13 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/clusteringress/resources"
+	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/common"
 	routev1 "github.com/openshift/api/route/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/logging"
-	"knative.dev/serving/pkg/apis/networking"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -30,7 +28,14 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileClusterIngress{client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	client := mgr.GetClient()
+	return &ReconcileClusterIngress{
+		base: &common.BaseIngressReconciler{
+			Client: client,
+		},
+		client: client,
+		scheme: mgr.GetScheme(),
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -64,6 +69,7 @@ var _ reconcile.Reconciler = &ReconcileClusterIngress{}
 
 // ReconcileClusterIngress reconciles a ClusterIngress object
 type ReconcileClusterIngress struct {
+	base *common.BaseIngressReconciler
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
 	client client.Client
@@ -97,7 +103,7 @@ func (r *ReconcileClusterIngress) Reconcile(request reconcile.Request) (reconcil
 
 	// Don't modify the informer's copy
 	ci := original.DeepCopy()
-	err = r.reconcile(ctx, ci)
+	err = r.base.ReconcileIngress(ctx, ci)
 	if equality.Semantic.DeepEqual(original.Status, ci.Status) {
 		// If we didn't change anything then don't call updateStatus.
 		// This is important because the copy we loaded from the informer's
@@ -129,94 +135,4 @@ func (r *ReconcileClusterIngress) updateStatus(ctx context.Context, desired *net
 	existing.Status = desired.Status
 	err = r.client.Status().Update(ctx, existing)
 	return existing, err
-}
-
-func (r *ReconcileClusterIngress) reconcile(ctx context.Context, ci *networkingv1alpha1.ClusterIngress) error {
-	logger := logging.FromContext(ctx)
-
-	if ci.GetDeletionTimestamp() != nil {
-		return r.reconcileDeletion(ctx, ci)
-	}
-
-	logger.Infof("Reconciling clusterIngress :%v", ci)
-
-	exposed := ci.Spec.Visibility == networkingv1alpha1.IngressVisibilityExternalIP
-	if exposed {
-		routes, err := resources.MakeRoutes(ci)
-		if err != nil {
-			return err
-		}
-
-		for _, route := range routes {
-			logger.Infof("Creating/Updating OpenShift Route for host %s", route.Spec.Host)
-			if err := r.reconcileRoute(ctx, ci, route); err != nil {
-				return err
-			}
-		}
-	} else {
-		r.deleteRoutes(ctx, ci)
-	}
-
-	logger.Info("ClusterIngress successfully synced")
-	return nil
-}
-
-func (r *ReconcileClusterIngress) deleteRoutes(ctx context.Context, ci *networkingv1alpha1.ClusterIngress) error {
-	logger := logging.FromContext(ctx)
-	listOpts := &client.ListOptions{
-		LabelSelector: labels.SelectorFromSet(map[string]string{
-			networking.IngressLabelKey: ci.Name,
-		}),
-	}
-	var routeList routev1.RouteList
-	if err := r.client.List(ctx, listOpts, &routeList); err != nil {
-		return err
-	}
-
-	for _, route := range routeList.Items {
-		logger.Infof("Deleting OpenShift Route for host %s", route.Spec.Host)
-		if err := r.client.Delete(ctx, &route); err != nil {
-			return err
-		}
-		logger.Infof("Deleted OpenShift Route %q in namespace %q", route.Name, route.Namespace)
-	}
-	return nil
-}
-
-func (r *ReconcileClusterIngress) reconcileRoute(ctx context.Context, ci *networkingv1alpha1.ClusterIngress, desired *routev1.Route) error {
-	logger := logging.FromContext(ctx)
-
-	// Check if this Route already exists
-	route := &routev1.Route{}
-	err := r.client.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, route)
-	if err != nil && errors.IsNotFound(err) {
-		err = r.client.Create(ctx, desired)
-		if err != nil {
-			logger.Errorf("Failed to create OpenShift Route %q in namespace %q: %v", desired.Name, desired.Namespace, err)
-			return err
-		}
-		logger.Infof("Created OpenShift Route %q in namespace %q", desired.Name, desired.Namespace)
-	} else if err != nil {
-		return err
-	} else if !equality.Semantic.DeepEqual(route.Spec, desired.Spec) {
-		// Don't modify the informers copy
-		existing := route.DeepCopy()
-		existing.Spec = desired.Spec
-		existing.Annotations = desired.Annotations
-		err = r.client.Update(ctx, existing)
-		if err != nil {
-			logger.Errorf("Failed to update OpenShift Route %q in namespace %q: %v", desired.Name, desired.Namespace, err)
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (r *ReconcileClusterIngress) reconcileDeletion(ctx context.Context, ci *networkingv1alpha1.ClusterIngress) error {
-	// TODO: something with a finalizer?  We're using owner refs for
-	// now, but really shouldn't be using owner refs from
-	// cluster-scoped ClusterIngress to a namespace-scoped K8s
-	// Service.
-	return nil
 }
