@@ -2,13 +2,15 @@ package resources
 
 import (
 	"errors"
-	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 
-	"github.com/knative/serving/pkg/apis/networking"
-	networkingv1alpha1 "github.com/knative/serving/pkg/apis/networking/v1alpha1"
-	"github.com/knative/serving/pkg/apis/serving"
+	"github.com/stretchr/testify/assert"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"knative.dev/serving/pkg/apis/networking"
+	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
+	"knative.dev/serving/pkg/apis/serving"
 )
 
 func TestMakeRouteWithNoRules(t *testing.T) {
@@ -27,7 +29,7 @@ func TestMakeRouteInternalHost(t *testing.T) {
 	ci := &networkingv1alpha1.ClusterIngress{
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
-			Rules: []networkingv1alpha1.ClusterIngressRule{{
+			Rules: []networkingv1alpha1.IngressRule{{
 				Hosts: []string{"test.default.svc.cluster.local"},
 			}},
 		},
@@ -42,7 +44,7 @@ func TestMakeRouteValidHost(t *testing.T) {
 	ci := &networkingv1alpha1.ClusterIngress{
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
-			Rules: []networkingv1alpha1.ClusterIngressRule{{
+			Rules: []networkingv1alpha1.IngressRule{{
 				Hosts: []string{"public.default.domainName"},
 			}},
 		},
@@ -57,10 +59,10 @@ func TestMakeRouteWithEmptyTimeout(t *testing.T) {
 	ci := &networkingv1alpha1.ClusterIngress{
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
-			Rules: []networkingv1alpha1.ClusterIngressRule{{
+			Rules: []networkingv1alpha1.IngressRule{{
 				Hosts: []string{"public.default.domainName"},
-				HTTP: &networkingv1alpha1.HTTPClusterIngressRuleValue{
-					Paths: []networkingv1alpha1.HTTPClusterIngressPath{{}},
+				HTTP: &networkingv1alpha1.HTTPIngressRuleValue{
+					Paths: []networkingv1alpha1.HTTPIngressPath{{}},
 				},
 			}},
 		},
@@ -78,7 +80,7 @@ func TestMakeRouteForTimeout(t *testing.T) {
 	routes, _ := MakeRoutes(ci)
 	for i, _ := range routes {
 		assert.Equal(t, "600s", routes[i].ObjectMeta.Annotations[TimeoutAnnotation])
-		assert.NotEqual(t, networkingv1alpha1.DefaultTimeout, routes[i].ObjectMeta.Annotations[TimeoutAnnotation])
+		assert.NotEqual(t, 10*time.Minute, routes[i].ObjectMeta.Annotations[TimeoutAnnotation])
 	}
 }
 
@@ -117,11 +119,11 @@ func createClusterIngressObj(domainInternal string, host []string) *networkingv1
 		},
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
-			Rules: []networkingv1alpha1.ClusterIngressRule{{
+			Rules: []networkingv1alpha1.IngressRule{{
 				Hosts: host,
-				HTTP: &networkingv1alpha1.HTTPClusterIngressRuleValue{
-					Paths: []networkingv1alpha1.HTTPClusterIngressPath{{
-						Timeout: &metav1.Duration{Duration: networkingv1alpha1.DefaultTimeout},
+				HTTP: &networkingv1alpha1.HTTPIngressRuleValue{
+					Paths: []networkingv1alpha1.HTTPIngressPath{{
+						Timeout: &metav1.Duration{Duration: 10 * time.Minute},
 					}},
 				},
 			}},

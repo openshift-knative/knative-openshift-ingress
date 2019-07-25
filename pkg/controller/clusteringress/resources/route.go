@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/knative/pkg/kmeta"
-	"github.com/knative/serving/pkg/apis/networking"
-	networkingv1alpha1 "github.com/knative/serving/pkg/apis/networking/v1alpha1"
-	"github.com/knative/serving/pkg/apis/serving"
 	routev1 "github.com/openshift/api/route/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"knative.dev/pkg/kmeta"
+	"knative.dev/serving/pkg/apis/networking"
+	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
+	"knative.dev/serving/pkg/apis/serving"
 )
 
 const (
@@ -44,7 +44,7 @@ func MakeRoutes(ci *networkingv1alpha1.ClusterIngress) ([]*routev1.Route, error)
 	return routes, nil
 }
 
-func makeRoute(ci *networkingv1alpha1.ClusterIngress, host string, index int, rule networkingv1alpha1.ClusterIngressRule) (*routev1.Route, error) {
+func makeRoute(ci *networkingv1alpha1.ClusterIngress, host string, index int, rule networkingv1alpha1.IngressRule) (*routev1.Route, error) {
 	annotations := make(map[string]string)
 
 	if rule.HTTP != nil {

@@ -63,8 +63,9 @@ required = [
   # version = "=v0.5.0" #osdk_version_annotation
 
 [[constraint]]
-  name = "github.com/knative/serving"
-  version = "v0.5.0"
+  name = "knative.dev/serving"
+  # HEAD as of 2019-07-25
+  revision = "293a57187ac5783b74b46fbf808f0d44720cc7b4"
 
 [[constraint]]
   name = "github.com/stretchr/testify"
@@ -72,9 +73,9 @@ required = [
 
 # Align knative/pkg to the version used in knative/serving
 [[override]]
-  name = "github.com/knative/pkg"
-  # HEAD as of 2019-03-29
-  revision = "916205998db9d085aaff357221b208bc89290ea5"
+  name = "knative.dev/pkg"
+  # HEAD as of 2019-07-25
+  revision = "86f49e59e0c092a7db93de15a219322c46cd854c"
 
 [prune]
   go-tests = true
