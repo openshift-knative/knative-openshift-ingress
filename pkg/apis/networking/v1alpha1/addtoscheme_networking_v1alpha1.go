@@ -1,8 +1,8 @@
 package v1alpha1
 
 import (
-	networkingv1alpha1 "github.com/knative/serving/pkg/apis/networking/v1alpha1"
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/apis"
+	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 )
 
 func init() {

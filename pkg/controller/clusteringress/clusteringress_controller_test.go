@@ -2,18 +2,19 @@ package clusteringress
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/clusteringress/resources"
 
-	networkingv1alpha1 "github.com/knative/serving/pkg/apis/networking/v1alpha1"
 	routev1 "github.com/openshift/api/route/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
+	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
@@ -37,10 +38,10 @@ func TestClusterIngressController(t *testing.T) {
 		},
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
-			Rules: []networkingv1alpha1.ClusterIngressRule{{
+			Rules: []networkingv1alpha1.IngressRule{{
 				Hosts: []string{"public.default.domainName"},
-				HTTP: &networkingv1alpha1.HTTPClusterIngressRuleValue{
-					Paths: []networkingv1alpha1.HTTPClusterIngressPath{{
+				HTTP: &networkingv1alpha1.HTTPIngressRuleValue{
+					Paths: []networkingv1alpha1.HTTPIngressPath{{
 						Timeout: &metav1.Duration{Duration: 5 * time.Second},
 					}},
 				},
@@ -95,6 +96,6 @@ func TestClusterIngressController(t *testing.T) {
 	}
 
 	assert.Equal(t, "5s", routes.ObjectMeta.Annotations[resources.TimeoutAnnotation])
-	assert.NotEqual(t, networkingv1alpha1.DefaultTimeout, routes.ObjectMeta.Annotations[resources.TimeoutAnnotation])
+	assert.NotEqual(t, 10*time.Minute, routes.ObjectMeta.Annotations[resources.TimeoutAnnotation])
 
 }
