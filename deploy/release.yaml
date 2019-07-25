@@ -45,6 +45,9 @@ rules:
   - clusteringresses
   - clusteringresses/status
   - clusteringresses/finalizers
+  - ingresses
+  - ingresses/status
+  - ingresses/finalizers
   verbs:
   - "*"
 - apiGroups:
