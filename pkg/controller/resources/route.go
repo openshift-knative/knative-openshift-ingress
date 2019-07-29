@@ -16,6 +16,7 @@ import (
 
 const (
 	TimeoutAnnotation = "haproxy.router.openshift.io/timeout"
+	DisableRoute      = "serving.knative.dev/disableRoute"
 )
 
 // MakeRoutes creates OpenShift Routes from a Knative Ingress
@@ -32,6 +33,9 @@ func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error)
 			parts := strings.Split(host, ".")
 			if len(parts) > 2 && parts[2] != "svc" {
 				route, err := makeRoute(ci, host, routeIndex, rule)
+				if route == nil && err == nil {
+					continue
+				}
 				routeIndex = routeIndex + 1
 				if err != nil {
 					return nil, err
@@ -45,7 +49,16 @@ func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error)
 }
 
 func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, rule networkingv1alpha1.IngressRule) (*routev1.Route, error) {
-	annotations := make(map[string]string)
+	// Take over annotaitons from ingress.
+	annotations := ci.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+
+	// Skip making route when the annotation is specified.
+	if _, ok := annotations[DisableRoute]; ok {
+		return nil, nil
+	}
 
 	if rule.HTTP != nil {
 		for i := range rule.HTTP.Paths {

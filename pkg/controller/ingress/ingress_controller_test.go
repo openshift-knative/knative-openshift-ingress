@@ -11,28 +11,23 @@ import (
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/resources"
 
 	routev1 "github.com/openshift/api/route/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
+	"knative.dev/serving/pkg/apis/serving"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
-// TestIngressController runs Reconcile ReconcileIngress.Reconcile() against a
-// fake client that tracks an Ingress object.
-func TestIngressController(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+var (
+	name      = "ingress-operator"
+	namespace = "istio-system"
 
-	var (
-		name      = "ingress-operator"
-		namespace = "istio-system"
-	)
-
-	// An Ingress resource with metadata and spec.
-	ingress := &networkingv1alpha1.Ingress{
+	defaultIngress = &networkingv1alpha1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -56,47 +51,82 @@ func TestIngressController(t *testing.T) {
 			},
 		},
 	}
+)
 
-	// route object
-	route := &routev1.Route{}
+// TestIngressController runs Reconcile ReconcileIngress.Reconcile() against a
+// fake client that tracks an Ingress object.
+func TestIngressController(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
 
-	// Objects to track in the fake client.
-	objs := []runtime.Object{
-		ingress,
-		route,
-	}
-
-	// Register operator types with the runtime scheme.
-	s := scheme.Scheme
-	s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, ingress)
-	s.AddKnownTypes(routev1.SchemeGroupVersion, route)
-	// Create a fake client to mock API calls.
-	cl := fake.NewFakeClient(objs...)
-	// Create a Reconcile Ingress object with the scheme and fake client.
-	r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
-
-	// Mock request to simulate Reconcile() being called on an event for a
-	// watched resource .
-	req := reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      name,
-			Namespace: "istio-system",
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		want        map[string]string
+		wantErr     func(err error) bool
+	}{
+		{
+			name:        "reconcile route with timeout annotation",
+			annotations: map[string]string{},
+			want:        map[string]string{resources.TimeoutAnnotation: "5s"},
+			wantErr:     func(err error) bool { return err == nil },
+		},
+		{
+			name:        "reconcile route with ingress annotation",
+			annotations: map[string]string{serving.CreatorAnnotation: "userA", serving.UpdaterAnnotation: "userB"},
+			want:        map[string]string{serving.CreatorAnnotation: "userA", serving.UpdaterAnnotation: "userB", resources.TimeoutAnnotation: "5s"},
+			wantErr:     func(err error) bool { return err == nil },
+		},
+		{
+			name:        "do not reconcile with disable route annotation",
+			annotations: map[string]string{resources.DisableRoute: ""},
+			want:        nil,
+			wantErr:     errors.IsNotFound,
 		},
 	}
-	_, err := r.Reconcile(req)
-	if err != nil {
-		t.Fatalf("reconcile: (%v)", err)
+
+	for _, test := range tests {
+
+		// An Ingress resource with metadata and spec.
+		ingress := defaultIngress
+		// Set test annotation
+		ingress.SetAnnotations(test.annotations)
+
+		// route object
+		route := &routev1.Route{}
+
+		// Objects to track in the fake client.
+		objs := []runtime.Object{
+			ingress,
+			route,
+		}
+
+		// Register operator types with the runtime scheme.
+		s := scheme.Scheme
+		s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, ingress)
+		s.AddKnownTypes(routev1.SchemeGroupVersion, route)
+		// Create a fake client to mock API calls.
+		cl := fake.NewFakeClient(objs...)
+		// Create a Reconcile Ingress object with the scheme and fake client.
+		r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
+
+		// Mock request to simulate Reconcile() being called on an event for a
+		// watched resource .
+		req := reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      name,
+				Namespace: "istio-system",
+			},
+		}
+		_, err := r.Reconcile(req)
+		if err != nil {
+			t.Fatalf("reconcile: (%v)", err)
+		}
+
+		// Check if route has been created
+		routes := &routev1.Route{}
+		err = cl.Get(context.TODO(), types.NamespacedName{Name: "ingress-operator-0", Namespace: "istio-system"}, routes)
+
+		assert.True(t, test.wantErr(err))
+		assert.Equal(t, routes.ObjectMeta.Annotations, test.want)
 	}
-
-	// Check if route has been created
-	routes := &routev1.Route{}
-
-	err = cl.Get(context.TODO(), types.NamespacedName{Name: "ingress-operator-0", Namespace: "istio-system"}, routes)
-	if err != nil {
-		t.Fatalf("get route: (%v)", err)
-	}
-
-	assert.Equal(t, "5s", routes.ObjectMeta.Annotations[resources.TimeoutAnnotation])
-	assert.NotEqual(t, 10*time.Minute, routes.ObjectMeta.Annotations[resources.TimeoutAnnotation])
-
 }
