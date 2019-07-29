@@ -30,8 +30,9 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 
 	exposed := ci.GetSpec().Visibility == networkingv1alpha1.IngressVisibilityExternalIP
 	if exposed {
-		routes, err := resources.MakeRoutes(ci)
+		routes, err := resources.MakeRoutes(ci, r.Client)
 		if err != nil {
+			logger.Errorf("Failed to reconcile Ingress %v: %v", ci, err)
 			return err
 		}
 

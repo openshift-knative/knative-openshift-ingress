@@ -1,25 +1,32 @@
 package resources
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 
 	routev1 "github.com/openshift/api/route/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"knative.dev/pkg/kmeta"
 	"knative.dev/serving/pkg/apis/networking"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"knative.dev/serving/pkg/apis/serving"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	TimeoutAnnotation = "haproxy.router.openshift.io/timeout"
+	TimeoutAnnotation      = "haproxy.router.openshift.io/timeout"
+	CertAnnotation         = "serving.knative.openshift.io/certificate"
+	TerminationAnnotation  = "serving.knative.openshift.io/tlsMode"
+	HttpProtocolAnnotation = "serving.knative.openshift.io/httpProtocol"
 )
 
 // MakeRoutes creates OpenShift Routes from a Knative Ingress
-func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error) {
+func MakeRoutes(ci networkingv1alpha1.IngressAccessor, client client.Client) ([]*routev1.Route, error) {
 	routes := []*routev1.Route{}
 	routeIndex := 0
 	for _, rule := range ci.GetSpec().Rules {
@@ -31,10 +38,13 @@ func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error)
 			// point.
 			parts := strings.Split(host, ".")
 			if len(parts) > 2 && parts[2] != "svc" {
-				route, err := makeRoute(ci, host, routeIndex, rule)
+				route, err := makeRoute(ci, client, host, routeIndex, rule)
 				routeIndex = routeIndex + 1
 				if err != nil {
 					return nil, err
+				}
+				if route == nil {
+					continue
 				}
 				routes = append(routes, route)
 			}
@@ -44,8 +54,12 @@ func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error)
 	return routes, nil
 }
 
-func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, rule networkingv1alpha1.IngressRule) (*routev1.Route, error) {
-	annotations := make(map[string]string)
+func makeRoute(ci networkingv1alpha1.IngressAccessor, client client.Client, host string, index int, rule networkingv1alpha1.IngressRule) (*routev1.Route, error) {
+	// Take over annotaitons from ingress.
+	annotations := ci.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
 
 	if rule.HTTP != nil {
 		for i := range rule.HTTP.Paths {
@@ -91,7 +105,8 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 	if serviceName == "" || namespace == "" {
 		return nil, errors.New("Unable to find ClusterIngress LoadBalancer with DomainInternal set")
 	}
-	return &routev1.Route{
+
+	route := &routev1.Route{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
 			Namespace:       namespace,
@@ -109,5 +124,61 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 				Name: serviceName,
 			},
 		},
-	}, nil
+	}
+	if terminationType, ok := annotations[TerminationAnnotation]; ok {
+		terminationType = strings.ToLower(terminationType)
+		secret := &corev1.Secret{}
+		if cert, ok_ := annotations[CertAnnotation]; ok_ {
+			err := client.Get(context.TODO(), types.NamespacedName{Namespace: ci.GetNamespace(), Name: cert}, secret)
+			if err != nil {
+				return nil, err
+			}
+		}
+		httpProtocolPolicy := strings.ToLower(annotations[HttpProtocolAnnotation])
+		route.Spec.TLS = makeTLSConfig(terminationType, httpProtocolPolicy, *secret)
+		route.Spec.Port = makeTargetPort(terminationType)
+	}
+	return route, nil
+}
+
+func makeTargetPort(termination string) *routev1.RoutePort {
+	// passthrough and reencrypt has 443 as the target port. Otherwise, target port is 80 by default.
+	if termination == "passthrough" || termination == "reencrypt" {
+		return &routev1.RoutePort{TargetPort: intstr.FromInt(443)}
+	}
+	return &routev1.RoutePort{TargetPort: intstr.FromInt(80)}
+}
+
+func makeTLSConfig(terminationType, httpProtocolPolicy string, secret corev1.Secret) *routev1.TLSConfig {
+	tlsCrt := string(secret.Data["tls.crt"])
+	tlsKey := string(secret.Data["tls.key"])
+	caCertificate := string(secret.Data["caCertificate"])
+	destinationCACertificate := string(secret.Data["destinationCACertificate"])
+
+	var termination routev1.TLSTerminationType
+	switch terminationType {
+	case "edge":
+		termination = routev1.TLSTerminationEdge
+	case "passthrough":
+		termination = routev1.TLSTerminationPassthrough
+	case "reencrypt":
+		termination = routev1.TLSTerminationReencrypt
+	}
+
+	var insecureEdgeTerminationPolicy routev1.InsecureEdgeTerminationPolicyType
+	switch httpProtocolPolicy {
+	case "none":
+		insecureEdgeTerminationPolicy = routev1.InsecureEdgeTerminationPolicyNone
+	case "redirect":
+		insecureEdgeTerminationPolicy = routev1.InsecureEdgeTerminationPolicyRedirect
+	}
+
+	return &routev1.TLSConfig{
+		Termination:                   termination,
+		Certificate:                   tlsCrt,
+		Key:                           tlsKey,
+		CACertificate:                 caCertificate,
+		DestinationCACertificate:      destinationCACertificate,
+		InsecureEdgeTerminationPolicy: insecureEdgeTerminationPolicy,
+	}
 }
