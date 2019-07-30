@@ -88,7 +88,7 @@ func TestMakeRouteForTimeout(t *testing.T) {
 func TestDisableRouteByAnnotation(t *testing.T) {
 	host := []string{"public.default.domainName", "local.default.domainName"}
 	ci := createClusterIngressObj("istio-ingressgateway.istio-system.svc.cluster.local", host)
-	ci.ObjectMeta.Annotations = map[string]string{DisableRoute: ""}
+	ci.ObjectMeta.Annotations = map[string]string{DisableRouteAnnotation: ""}
 
 	routes, err := MakeRoutes(ci)
 	assert.Equal(t, []*routev1.Route{}, routes)

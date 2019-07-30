@@ -13,7 +13,6 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
@@ -23,10 +22,12 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
-var (
+const (
 	name      = "ingress-operator"
 	namespace = "istio-system"
+)
 
+var (
 	defaultIngress = &networkingv1alpha1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -78,7 +79,7 @@ func TestIngressController(t *testing.T) {
 		},
 		{
 			name:        "do not reconcile with disable route annotation",
-			annotations: map[string]string{resources.DisableRoute: ""},
+			annotations: map[string]string{resources.DisableRouteAnnotation: ""},
 			want:        nil,
 			wantErr:     errors.IsNotFound,
 		},
@@ -86,26 +87,18 @@ func TestIngressController(t *testing.T) {
 
 	for _, test := range tests {
 
-		// An Ingress resource with metadata and spec.
-		ingress := defaultIngress
 		// Set test annotation
-		ingress.SetAnnotations(test.annotations)
+		defaultIngress.SetAnnotations(test.annotations)
 
 		// route object
 		route := &routev1.Route{}
 
-		// Objects to track in the fake client.
-		objs := []runtime.Object{
-			ingress,
-			route,
-		}
-
 		// Register operator types with the runtime scheme.
 		s := scheme.Scheme
-		s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, ingress)
+		s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, defaultIngress)
 		s.AddKnownTypes(routev1.SchemeGroupVersion, route)
 		// Create a fake client to mock API calls.
-		cl := fake.NewFakeClient(objs...)
+		cl := fake.NewFakeClient(defaultIngress, route)
 		// Create a Reconcile Ingress object with the scheme and fake client.
 		r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
 
@@ -117,14 +110,13 @@ func TestIngressController(t *testing.T) {
 				Namespace: "istio-system",
 			},
 		}
-		_, err := r.Reconcile(req)
-		if err != nil {
+		if _, err := r.Reconcile(req); err != nil {
 			t.Fatalf("reconcile: (%v)", err)
 		}
 
 		// Check if route has been created
 		routes := &routev1.Route{}
-		err = cl.Get(context.TODO(), types.NamespacedName{Name: "ingress-operator-0", Namespace: "istio-system"}, routes)
+		err := cl.Get(context.TODO(), types.NamespacedName{Name: "ingress-operator-0", Namespace: "istio-system"}, routes)
 
 		assert.True(t, test.wantErr(err))
 		assert.Equal(t, routes.ObjectMeta.Annotations, test.want)
