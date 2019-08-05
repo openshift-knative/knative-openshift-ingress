@@ -16,6 +16,8 @@ import (
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"knative.dev/serving/pkg/apis/serving"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openshift/router/pkg/router/routeapihelpers"
 )
 
 const (
@@ -137,6 +139,14 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, client client.Client, host
 		httpProtocolPolicy := strings.ToLower(annotations[HttpProtocolAnnotation])
 		route.Spec.TLS = makeTLSConfig(terminationType, httpProtocolPolicy, *secret)
 		route.Spec.Port = makeTargetPort(terminationType)
+	}
+
+	if errs := routeapihelpers.ExtendedValidateRoute(route); len(errs) > 0 {
+		errmsg := ""
+		for i := 0; i < len(errs); i++ {
+			errmsg = errmsg + "\n  - " + errs[i].Error()
+		}
+		return nil, fmt.Errorf("Skipping route %s due to invalid configuration: %s", route.ObjectMeta.Name, errmsg)
 	}
 	return route, nil
 }
