@@ -17,6 +17,7 @@ import (
 const (
 	TimeoutAnnotation      = "haproxy.router.openshift.io/timeout"
 	DisableRouteAnnotation = "serving.knative.openshift.io/disableRoute"
+	TerminationAnnotation  = "serving.knative.openshift.io/tlsMode"
 )
 
 // MakeRoutes creates OpenShift Routes from a Knative Ingress
@@ -104,7 +105,8 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 	if serviceName == "" || namespace == "" {
 		return nil, errors.New("Unable to find ClusterIngress LoadBalancer with DomainInternal set")
 	}
-	return &routev1.Route{
+
+	route := &routev1.Route{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
 			Namespace:       namespace,
@@ -122,5 +124,15 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 				Name: serviceName,
 			},
 		},
-	}, nil
+	}
+	if terminationType, ok := annotations[TerminationAnnotation]; ok {
+		switch strings.ToLower(terminationType) {
+		case "passthrough":
+			route.Spec.TLS = &routev1.TLSConfig{Termination: routev1.TLSTerminationPassthrough}
+			route.Spec.Port = &routev1.RoutePort{TargetPort: intstr.FromInt(443)}
+		default:
+			// TODO: Return error
+		}
+	}
+	return route, nil
 }
