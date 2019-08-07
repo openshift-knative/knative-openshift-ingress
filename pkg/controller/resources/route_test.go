@@ -9,6 +9,7 @@ import (
 
 	routev1 "github.com/openshift/api/route/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"knative.dev/serving/pkg/apis/networking"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"knative.dev/serving/pkg/apis/serving"
@@ -116,6 +117,48 @@ func TestMakeRoute(t *testing.T) {
 		assert.Equal(t, routes[i].Labels[serving.RouteLabelKey], "route1")
 		assert.Equal(t, routes[i].Labels[networking.IngressLabelKey], "clusteringress")
 
+	}
+}
+
+func TestMakeSecuredRoute(t *testing.T) {
+	tests := []struct {
+		name           string
+		annotations    map[string]string
+		want           *routev1.TLSConfig
+		wantTargetPort intstr.IntOrString
+		wantErr        error
+	}{
+		{
+			name:        "Simple Passthrough teramination",
+			annotations: map[string]string{TLSTerminationAnnotation: "passthrough"},
+			want: &routev1.TLSConfig{
+				Termination: routev1.TLSTerminationPassthrough,
+			},
+			wantTargetPort: intstr.FromInt(443),
+			wantErr:        nil,
+		},
+		{
+			name:           "Unsupported teramination",
+			annotations:    map[string]string{TLSTerminationAnnotation: "edge"},
+			want:           nil,
+			wantTargetPort: intstr.FromInt(443),
+			wantErr:        ErrNotSupportedTLSTermination,
+		},
+	}
+
+	for _, test := range tests {
+		host := []string{"public.default.domainName", "public.default.svc.local"}
+		ci := createClusterIngressObj("istio-ingressgateway.istio-system.svc.cluster.local", host)
+		ci.ObjectMeta.Annotations = test.annotations
+		t.Run(test.name, func(t *testing.T) {
+
+			routes, err := MakeRoutes(ci)
+			assert.Equal(t, test.wantErr, err)
+			for i, _ := range routes {
+				assert.Equal(t, test.want, routes[i].Spec.TLS)
+				assert.Equal(t, test.wantTargetPort, routes[i].Spec.Port.TargetPort)
+			}
+		})
 	}
 }
 

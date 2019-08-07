@@ -18,6 +18,14 @@ const (
 	TimeoutAnnotation      = "haproxy.router.openshift.io/timeout"
 	DisableRouteAnnotation = "serving.knative.openshift.io/disableRoute"
 	TerminationAnnotation  = "serving.knative.openshift.io/tlsMode"
+
+	// TLSTerminationAnnotation is an annotation to configure routes.spec.tls.termination
+	TLSTerminationAnnotation = "serving.knative.openshift.io/tlsTermination"
+)
+
+var (
+	// ErrNotSupportedTLSTermination is an error when unsupported TLS termination is configured via annotation.
+	ErrNotSupportedTLSTermination = errors.New("Not supported tls termination is specified. Only \"passthrough\" is valid.")
 )
 
 // MakeRoutes creates OpenShift Routes from a Knative Ingress
@@ -125,13 +133,13 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 			},
 		},
 	}
-	if terminationType, ok := annotations[TerminationAnnotation]; ok {
+	if terminationType, ok := annotations[TLSTerminationAnnotation]; ok {
 		switch strings.ToLower(terminationType) {
 		case "passthrough":
 			route.Spec.TLS = &routev1.TLSConfig{Termination: routev1.TLSTerminationPassthrough}
 			route.Spec.Port = &routev1.RoutePort{TargetPort: intstr.FromInt(443)}
 		default:
-			// TODO: Return error
+			return nil, ErrNotSupportedTLSTermination
 		}
 	}
 	return route, nil
