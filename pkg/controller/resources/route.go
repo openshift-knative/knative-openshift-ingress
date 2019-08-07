@@ -125,7 +125,7 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 		Spec: routev1.RouteSpec{
 			Host: host,
 			Port: &routev1.RoutePort{
-				TargetPort: intstr.FromInt(80),
+				TargetPort: intstr.FromString("http"),
 			},
 			To: routev1.RouteTargetReference{
 				Kind: "Service",
@@ -137,7 +137,7 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 		switch strings.ToLower(terminationType) {
 		case "passthrough":
 			route.Spec.TLS = &routev1.TLSConfig{Termination: routev1.TLSTerminationPassthrough}
-			route.Spec.Port = &routev1.RoutePort{TargetPort: intstr.FromInt(443)}
+			route.Spec.Port = &routev1.RoutePort{TargetPort: intstr.FromString("https")}
 		default:
 			return nil, ErrNotSupportedTLSTermination
 		}

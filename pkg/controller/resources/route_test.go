@@ -129,19 +129,19 @@ func TestMakeSecuredRoute(t *testing.T) {
 		wantErr        error
 	}{
 		{
-			name:        "Simple Passthrough teramination",
+			name:        "Simple Passthrough termination",
 			annotations: map[string]string{TLSTerminationAnnotation: "passthrough"},
 			want: &routev1.TLSConfig{
 				Termination: routev1.TLSTerminationPassthrough,
 			},
-			wantTargetPort: intstr.FromInt(443),
+			wantTargetPort: intstr.FromString("https"),
 			wantErr:        nil,
 		},
 		{
-			name:           "Unsupported teramination",
+			name:           "Unsupported termination",
 			annotations:    map[string]string{TLSTerminationAnnotation: "edge"},
 			want:           nil,
-			wantTargetPort: intstr.FromInt(443),
+			wantTargetPort: intstr.FromString("https"),
 			wantErr:        ErrNotSupportedTLSTermination,
 		},
 	}
