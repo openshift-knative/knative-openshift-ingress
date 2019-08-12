@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	routev1 "github.com/openshift/api/route/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/serving/pkg/apis/networking"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
@@ -82,6 +83,16 @@ func TestMakeRouteForTimeout(t *testing.T) {
 		assert.Equal(t, "600s", routes[i].ObjectMeta.Annotations[TimeoutAnnotation])
 		assert.NotEqual(t, 10*time.Minute, routes[i].ObjectMeta.Annotations[TimeoutAnnotation])
 	}
+}
+
+func TestDisableRouteByAnnotation(t *testing.T) {
+	host := []string{"public.default.domainName", "local.default.domainName"}
+	ci := createClusterIngressObj("istio-ingressgateway.istio-system.svc.cluster.local", host)
+	ci.ObjectMeta.Annotations = map[string]string{DisableRouteAnnotation: ""}
+
+	routes, err := MakeRoutes(ci)
+	assert.Equal(t, []*routev1.Route{}, routes)
+	assert.Nil(t, err)
 }
 
 func TestMakeRouteInvalidDomain(t *testing.T) {
