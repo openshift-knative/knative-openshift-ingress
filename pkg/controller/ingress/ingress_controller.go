@@ -6,10 +6,12 @@ import (
 
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/common"
 	routev1 "github.com/openshift/api/route/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"knative.dev/pkg/logging"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -33,8 +35,9 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		base: &common.BaseIngressReconciler{
 			Client: client,
 		},
-		client: client,
-		scheme: mgr.GetScheme(),
+		client:   client,
+		scheme:   mgr.GetScheme(),
+		recorder: mgr.GetRecorder("knative-openshift-ingress"),
 	}
 }
 
@@ -72,8 +75,9 @@ type ReconcileIngress struct {
 	base *common.BaseIngressReconciler
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client client.Client
-	scheme *runtime.Scheme
+	client   client.Client
+	scheme   *runtime.Scheme
+	recorder record.EventRecorder
 }
 
 // Reconcile reads that state of the cluster for a Ingress
@@ -111,6 +115,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 		// to status with this stale state.
 	} else if _, err := r.updateStatus(ctx, ci); err != nil {
 		logger.Warnw("Failed to update ingress status", err)
+		r.recorder.Event(ci, corev1.EventTypeWarning, "SyncError", err.Error())
 		return reconcile.Result{}, err
 	}
 
