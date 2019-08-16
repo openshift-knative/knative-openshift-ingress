@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	name      = "ingress-operator"
-	namespace = "istio-system"
+	name       = "ingress-operator"
+	namespace  = "istio-system"
+	domainName = name + "." + namespace + ".default.domainName"
 )
 
 var (
@@ -36,7 +37,7 @@ var (
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
 			Rules: []networkingv1alpha1.IngressRule{{
-				Hosts: []string{"public.default.domainName"},
+				Hosts: []string{domainName},
 				HTTP: &networkingv1alpha1.HTTPIngressRuleValue{
 					Paths: []networkingv1alpha1.HTTPIngressPath{{
 						Timeout: &metav1.Duration{Duration: 5 * time.Second},
@@ -53,6 +54,63 @@ var (
 		},
 	}
 )
+
+func TestRouteMigration(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+
+	tests := []struct {
+		name        string
+		exRoute     *routev1.Route
+		wantName    string
+		removedName string
+	}{
+		{
+			name: "Clean up old route and new route is generated",
+			exRoute: &routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-0"},
+				Spec:       routev1.RouteSpec{Host: domainName},
+			},
+			wantName:    domainName,
+			removedName: "test-0",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Register operator types with the runtime scheme.
+			s := scheme.Scheme
+			s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, defaultIngress)
+			s.AddKnownTypes(routev1.SchemeGroupVersion, test.exRoute)
+			s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
+			// Create a fake client to mock API calls.
+			cl := fake.NewFakeClient(defaultIngress, test.exRoute)
+			// Create a Reconcile Ingress object with the scheme and fake client.
+			r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
+			// Mock request to simulate Reconcile() being called on an event for a
+			// watched resource .
+			req := reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      name,
+					Namespace: namespace,
+				},
+			}
+			if _, err := r.Reconcile(req); err != nil {
+				t.Fatalf("reconcile: (%v)", err)
+			}
+
+			// Check if ex-Route has been reconciled with new name.
+			route := &routev1.Route{}
+			err := cl.Get(context.TODO(), types.NamespacedName{Name: test.wantName, Namespace: namespace}, route)
+			assert.Nil(t, err)
+			assert.Equal(t, test.exRoute.Spec.Host, route.Spec.Host)
+
+			// Check if ex-Route has been deleted.
+			err = cl.Get(context.TODO(), types.NamespacedName{Name: test.removedName, Namespace: namespace}, route)
+			assert.True(t, errors.IsNotFound(err))
+
+		})
+	}
+}
 
 // TestIngressController runs Reconcile ReconcileIngress.Reconcile() against a
 // fake client that tracks an Ingress object.
@@ -110,6 +168,7 @@ func TestIngressController(t *testing.T) {
 			s := scheme.Scheme
 			s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, defaultIngress)
 			s.AddKnownTypes(routev1.SchemeGroupVersion, route)
+			s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
 			// Create a fake client to mock API calls.
 			cl := fake.NewFakeClient(defaultIngress, route)
 			// Create a Reconcile Ingress object with the scheme and fake client.
@@ -120,7 +179,7 @@ func TestIngressController(t *testing.T) {
 			req := reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      name,
-					Namespace: "istio-system",
+					Namespace: namespace,
 				},
 			}
 			if _, err := r.Reconcile(req); err != nil {
@@ -129,7 +188,7 @@ func TestIngressController(t *testing.T) {
 
 			// Check if route has been created
 			routes := &routev1.Route{}
-			err := cl.Get(context.TODO(), types.NamespacedName{Name: "ingress-operator-0", Namespace: "istio-system"}, routes)
+			err := cl.Get(context.TODO(), types.NamespacedName{Name: domainName, Namespace: namespace}, routes)
 
 			assert.True(t, test.wantErr(err))
 			assert.Equal(t, test.want, routes.ObjectMeta.Annotations)

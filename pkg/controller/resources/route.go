@@ -41,7 +41,6 @@ func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error)
 		return routes, nil
 	}
 
-	routeIndex := 0
 	for _, rule := range ci.GetSpec().Rules {
 		for _, host := range rule.Hosts {
 			// Ignore domains like myksvc.myproject.svc.cluster.local
@@ -51,8 +50,7 @@ func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error)
 			// point.
 			parts := strings.Split(host, ".")
 			if len(parts) > 2 && parts[2] != "svc" {
-				route, err := makeRoute(ci, host, routeIndex, rule)
-				routeIndex = routeIndex + 1
+				route, err := makeRoute(ci, host, rule)
 				if err != nil {
 					return nil, err
 				}
@@ -67,7 +65,7 @@ func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error)
 	return routes, nil
 }
 
-func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, rule networkingv1alpha1.IngressRule) (*routev1.Route, error) {
+func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, rule networkingv1alpha1.IngressRule) (*routev1.Route, error) {
 	// Take over annotaitons from ingress.
 	annotations := ci.GetAnnotations()
 	if annotations == nil {
@@ -108,7 +106,6 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 	labels[serving.RouteLabelKey] = ingressLabels[serving.RouteLabelKey]
 	labels[serving.RouteNamespaceLabelKey] = ingressLabels[serving.RouteNamespaceLabelKey]
 
-	name := fmt.Sprintf("%s-%d", ci.GetName(), index)
 	serviceName := ""
 	namespace := ""
 	if ci.GetStatus().LoadBalancer != nil {
@@ -131,7 +128,7 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 
 	route := &routev1.Route{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
+			Name:            host,
 			Namespace:       namespace,
 			OwnerReferences: []metav1.OwnerReference{*kmeta.NewControllerRef(ci)},
 			Labels:          labels,

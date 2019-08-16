@@ -30,16 +30,32 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 
 	exposed := ci.GetSpec().Visibility == networkingv1alpha1.IngressVisibilityExternalIP
 	if exposed {
+		listOpts := &client.ListOptions{
+			LabelSelector: labels.SelectorFromSet(map[string]string{
+				networking.IngressLabelKey: ci.GetName(),
+			}),
+		}
+		var existing routev1.RouteList
+		if err := r.Client.List(ctx, listOpts, &existing); err != nil {
+			return err
+		}
+		existingMap := routeMap(existing)
+
 		routes, err := resources.MakeRoutes(ci)
 		if err != nil {
 			return err
 		}
-
 		for _, route := range routes {
 			logger.Infof("Creating/Updating OpenShift Route for host %s", route.Spec.Host)
 			if err := r.reconcileRoute(ctx, ci, route); err != nil {
 				return err
 			}
+			delete(existingMap, route.Name)
+		}
+		// If routes remains in existingMap, it must be obsoleted routes. Clean up them.
+		for _, rt := range existingMap {
+			logger.Infof("Deleting obsoleted route: %s", rt.Name)
+			r.deleteRoute(ctx, rt)
 		}
 	} else {
 		r.deleteRoutes(ctx, ci)
@@ -49,8 +65,25 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 	return nil
 }
 
-func (r *BaseIngressReconciler) deleteRoutes(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
+func routeMap(routes routev1.RouteList) map[string]*routev1.Route {
+	mp := map[string]*routev1.Route{}
+	for _, route := range routes.Items {
+		mp[route.Name] = &route
+	}
+	return mp
+}
+
+func (r *BaseIngressReconciler) deleteRoute(ctx context.Context, route *routev1.Route) error {
 	logger := logging.FromContext(ctx)
+	logger.Infof("Deleting OpenShift Route for host %s", route.Spec.Host)
+	if err := r.Client.Delete(ctx, route); err != nil {
+		return err
+	}
+	logger.Infof("Deleted OpenShift Route %q in namespace %q", route.Name, route.Namespace)
+	return nil
+}
+
+func (r *BaseIngressReconciler) deleteRoutes(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
 	listOpts := &client.ListOptions{
 		LabelSelector: labels.SelectorFromSet(map[string]string{
 			networking.IngressLabelKey: ci.GetName(),
@@ -62,11 +95,9 @@ func (r *BaseIngressReconciler) deleteRoutes(ctx context.Context, ci networkingv
 	}
 
 	for _, route := range routeList.Items {
-		logger.Infof("Deleting OpenShift Route for host %s", route.Spec.Host)
-		if err := r.Client.Delete(ctx, &route); err != nil {
+		if err := r.deleteRoute(ctx, &route); err != nil {
 			return err
 		}
-		logger.Infof("Deleted OpenShift Route %q in namespace %q", route.Name, route.Namespace)
 	}
 	return nil
 }
