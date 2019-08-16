@@ -5,14 +5,14 @@ metadata:
   name: knative-openshift-ingress
   namespace: knative-serving
   labels:
-    serving.knative.dev/release: v0.0.6
+    serving.knative.openshift.io/release: v0.0.6
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: knative-openshift-ingress
   labels:
-    serving.knative.dev/release: v0.0.6
+    serving.knative.openshift.io/release: v0.0.6
 rules:
 - apiGroups:
   - ""
@@ -76,7 +76,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: knative-openshift-ingress
   labels:
-    serving.knative.dev/release: v0.0.6
+    serving.knative.openshift.io/release: v0.0.6
 subjects:
 - kind: ServiceAccount
   name: knative-openshift-ingress
@@ -92,7 +92,7 @@ metadata:
   name: knative-openshift-ingress
   namespace: knative-serving
   labels:
-    serving.knative.dev/release: v0.0.6
+    serving.knative.openshift.io/release: v0.0.6
 spec:
   replicas: 1
   selector:
