@@ -23,8 +23,10 @@ import (
 )
 
 const (
-	name      = "ingress-operator"
-	namespace = "istio-system"
+	name       = "ingress-operator"
+	namespace  = "istio-system"
+	domainName = name + "." + namespace + ".default.domainName"
+	routeName  = "route-" + domainName
 )
 
 var (
@@ -36,7 +38,7 @@ var (
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
 			Rules: []networkingv1alpha1.IngressRule{{
-				Hosts: []string{"public.default.domainName"},
+				Hosts: []string{domainName},
 				HTTP: &networkingv1alpha1.HTTPIngressRuleValue{
 					Paths: []networkingv1alpha1.HTTPIngressPath{{
 						Timeout: &metav1.Duration{Duration: 5 * time.Second},
@@ -129,7 +131,7 @@ func TestIngressController(t *testing.T) {
 
 			// Check if route has been created
 			routes := &routev1.Route{}
-			err := cl.Get(context.TODO(), types.NamespacedName{Name: "ingress-operator-0", Namespace: "istio-system"}, routes)
+			err := cl.Get(context.TODO(), types.NamespacedName{Name: routeName, Namespace: "istio-system"}, routes)
 
 			assert.True(t, test.wantErr(err))
 			assert.Equal(t, test.want, routes.ObjectMeta.Annotations)

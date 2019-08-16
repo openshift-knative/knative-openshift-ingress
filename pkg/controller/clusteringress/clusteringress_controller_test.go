@@ -27,8 +27,10 @@ func TestClusterIngressController(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
 	var (
-		name      = "clusteringress-operator"
-		namespace = "istio-system"
+		name       = "clusteringress-operator"
+		namespace  = "istio-system"
+		domainName = name + "." + namespace + ".default.domainName"
+		routeName  = "route-" + domainName
 	)
 
 	// A ClusterIngress resource with metadata and spec.
@@ -40,7 +42,7 @@ func TestClusterIngressController(t *testing.T) {
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
 			Rules: []networkingv1alpha1.IngressRule{{
-				Hosts: []string{"public.default.domainName"},
+				Hosts: []string{domainName},
 				HTTP: &networkingv1alpha1.HTTPIngressRuleValue{
 					Paths: []networkingv1alpha1.HTTPIngressPath{{
 						Timeout: &metav1.Duration{Duration: 5 * time.Second},
@@ -80,7 +82,7 @@ func TestClusterIngressController(t *testing.T) {
 	req := reconcile.Request{
 		NamespacedName: types.NamespacedName{
 			Name:      name,
-			Namespace: "istio-system",
+			Namespace: namespace,
 		},
 	}
 	_, err := r.Reconcile(req)
@@ -91,7 +93,7 @@ func TestClusterIngressController(t *testing.T) {
 	// Check if route has been created
 	routes := &routev1.Route{}
 
-	err = cl.Get(context.TODO(), types.NamespacedName{Name: "clusteringress-operator-0", Namespace: "istio-system"}, routes)
+	err = cl.Get(context.TODO(), types.NamespacedName{Name: routeName, Namespace: namespace}, routes)
 	if err != nil {
 		t.Fatalf("get route: (%v)", err)
 	}
