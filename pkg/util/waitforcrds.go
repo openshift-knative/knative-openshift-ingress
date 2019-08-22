@@ -1,6 +1,8 @@
 package util
 
 import (
+	"errors"
+	"sync"
 	"time"
 
 	crdapi "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
@@ -12,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
+// WaitForCRDs waits for the given crdTypes to appear as APIs.
 func WaitForCRDs(mgr manager.Manager, stopCh <-chan struct{}, crdTypes ...runtime.Object) error {
 	crdClient, err := crdclient.NewForConfig(mgr.GetConfig())
 	if err != nil {
@@ -20,16 +23,7 @@ func WaitForCRDs(mgr manager.Manager, stopCh <-chan struct{}, crdTypes ...runtim
 	crdInformerFactory := crdinformers.NewSharedInformerFactory(crdClient, 10*time.Hour)
 	crdInformer := crdInformerFactory.Apiextensions().V1beta1().CustomResourceDefinitions().Informer()
 
-	done := false
-	doneCh := make(chan struct{})
-
-	handler := func() {
-		if allTypesAvailable(mgr, crdTypes...) && !done {
-			done = true
-			close(doneCh)
-		}
-	}
-
+	// Produce the GVKs for the passed in types.
 	scheme := mgr.GetScheme()
 	wantedGvks := make(map[schema.GroupVersionKind]bool)
 	for _, typ := range crdTypes {
@@ -42,7 +36,20 @@ func WaitForCRDs(mgr manager.Manager, stopCh <-chan struct{}, crdTypes ...runtim
 		}
 	}
 
+	// This channel will be closed once all types are available.
+	doneCh := make(chan struct{})
+	doneOnce := sync.Once{}
+	handler := func(_ interface{}) {
+		if allTypesAvailable(mgr, crdTypes...) {
+			doneOnce.Do(func() {
+				close(doneCh)
+			})
+		}
+	}
+
 	crdInformer.AddEventHandler(cache.FilteringResourceEventHandler{
+		// Filter by the GVKs we're actually looking for (from the passed in types) as
+		// trying out all possible GVKs in the cluster takes ages.
 		FilterFunc: func(obj interface{}) bool {
 			crd := obj.(*crdapi.CustomResourceDefinition)
 			for _, gvk := range possibleGvksFromCRD(crd) {
@@ -53,15 +60,13 @@ func WaitForCRDs(mgr manager.Manager, stopCh <-chan struct{}, crdTypes ...runtim
 			return false
 		},
 		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				handler()
-			},
-			UpdateFunc: func(_ interface{}, _ interface{}) {
-				handler()
-			},
+			AddFunc:    handler,
+			UpdateFunc: passNew(handler),
+			DeleteFunc: handler,
 		},
 	})
 
+	// Stop the informer once we finish here.
 	innerStopCh := make(chan struct{})
 	defer close(innerStopCh)
 	go crdInformer.Run(innerStopCh)
@@ -69,10 +74,19 @@ func WaitForCRDs(mgr manager.Manager, stopCh <-chan struct{}, crdTypes ...runtim
 	select {
 	case <-doneCh:
 	case <-stopCh:
+		return errors.New("stopped before all types have been verified")
 	}
 	return nil
 }
 
+// passNew adapts a function taking only one object (the new one) to fit the update handler signature.
+func passNew(f func(interface{})) func(interface{}, interface{}) {
+	return func(_ interface{}, new interface{}) {
+		f(new)
+	}
+}
+
+// possibleGvksFromCRD produces a list of GroupVersionKinds that a given CRD represents.
 func possibleGvksFromCRD(crd *crdapi.CustomResourceDefinition) []schema.GroupVersionKind {
 	var gvks []schema.GroupVersionKind
 	for _, version := range crd.Spec.Versions {
@@ -86,6 +100,8 @@ func possibleGvksFromCRD(crd *crdapi.CustomResourceDefinition) []schema.GroupVer
 	return gvks
 }
 
+// allTypesAvailable returns whether or not an informer for all the given types can
+// be created without an error.
 func allTypesAvailable(mgr manager.Manager, crdTypes ...runtime.Object) bool {
 	for _, typ := range crdTypes {
 		if _, err := mgr.GetCache().GetInformer(typ); err != nil {
