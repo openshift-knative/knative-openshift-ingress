@@ -16,6 +16,7 @@ import (
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	"github.com/operator-framework/operator-sdk/pkg/metrics"
+	"github.com/operator-framework/operator-sdk/pkg/restmapper"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	"github.com/spf13/pflag"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -23,6 +24,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
+
+	"github.com/openshift-knative/knative-openshift-ingress/pkg/util"
+	kruntime "k8s.io/apimachinery/pkg/runtime"
+	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 )
 
 // Change below variables to serve metrics on different host or port.
@@ -61,6 +66,8 @@ func main() {
 
 	printVersion()
 
+	stopCh := signals.SetupSignalHandler()
+
 	namespace, err := k8sutil.GetWatchNamespace()
 	if err != nil {
 		log.Error(err, "Failed to get watch namespace")
@@ -86,6 +93,7 @@ func main() {
 	// Create a new Cmd to provide shared dependencies and start components
 	mgr, err := manager.New(cfg, manager.Options{
 		Namespace:          namespace,
+		MapperProvider:     restmapper.NewDynamicRESTMapper,
 		MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
 	})
 	if err != nil {
@@ -97,6 +105,17 @@ func main() {
 
 	// Setup Scheme for all resources
 	if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
+		log.Error(err, "")
+		os.Exit(1)
+	}
+
+	// Listen for the CRDs we depend on the be available.
+	neededCrds := map[string]kruntime.Object{
+		"clusteringresses.networking.internal.knative.dev": &networkingv1alpha1.ClusterIngress{},
+		"ingresses.networking.internal.knative.dev":        &networkingv1alpha1.Ingress{},
+	}
+	log.Info("Waiting for necessary CRDs to be applied.")
+	if err := util.WaitForCRDs(mgr, stopCh, neededCrds); err != nil {
 		log.Error(err, "")
 		os.Exit(1)
 	}
@@ -116,7 +135,7 @@ func main() {
 	log.Info("Starting the Cmd.")
 
 	// Start the Cmd
-	if err := mgr.Start(signals.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(stopCh); err != nil {
 		log.Error(err, "Manager exited non-zero")
 		os.Exit(1)
 	}
