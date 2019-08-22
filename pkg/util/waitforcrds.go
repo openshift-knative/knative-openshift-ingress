@@ -6,12 +6,13 @@ import (
 	crdapi "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	crdclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	crdinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
-	runtime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-func WaitForCRDs(mgr manager.Manager, stopCh <-chan struct{}, crdNameTypes map[string]runtime.Object) error {
+func WaitForCRDs(mgr manager.Manager, stopCh <-chan struct{}, crdTypes ...runtime.Object) error {
 	crdClient, err := crdclient.NewForConfig(mgr.GetConfig())
 	if err != nil {
 		return err
@@ -23,18 +24,33 @@ func WaitForCRDs(mgr manager.Manager, stopCh <-chan struct{}, crdNameTypes map[s
 	doneCh := make(chan struct{})
 
 	handler := func() {
-		if allTypesAvailable(mgr, crdNameTypes) && !done {
+		if allTypesAvailable(mgr, crdTypes...) && !done {
 			done = true
 			close(doneCh)
+		}
+	}
+
+	scheme := mgr.GetScheme()
+	wantedGvks := make(map[schema.GroupVersionKind]bool)
+	for _, typ := range crdTypes {
+		typeGvks, _, err := scheme.ObjectKinds(typ)
+		if err != nil {
+			return err
+		}
+		for _, gvk := range typeGvks {
+			wantedGvks[gvk] = true
 		}
 	}
 
 	crdInformer.AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			crd := obj.(*crdapi.CustomResourceDefinition)
-			// Filtering by name because trying out on all CRDs is super expensive.
-			_, ok := crdNameTypes[crd.Name]
-			return ok
+			for _, gvk := range possibleGvksFromCRD(crd) {
+				if wantedGvks[gvk] {
+					return true
+				}
+			}
+			return false
 		},
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
@@ -57,8 +73,21 @@ func WaitForCRDs(mgr manager.Manager, stopCh <-chan struct{}, crdNameTypes map[s
 	return nil
 }
 
-func allTypesAvailable(mgr manager.Manager, crdNameTypes map[string]runtime.Object) bool {
-	for _, typ := range crdNameTypes {
+func possibleGvksFromCRD(crd *crdapi.CustomResourceDefinition) []schema.GroupVersionKind {
+	var gvks []schema.GroupVersionKind
+	for _, version := range crd.Spec.Versions {
+		gvk := schema.GroupVersionKind{
+			Group:   crd.Spec.Group,
+			Version: version.Name,
+			Kind:    crd.Spec.Names.Kind,
+		}
+		gvks = append(gvks, gvk)
+	}
+	return gvks
+}
+
+func allTypesAvailable(mgr manager.Manager, crdTypes ...runtime.Object) bool {
+	for _, typ := range crdTypes {
 		if _, err := mgr.GetCache().GetInformer(typ); err != nil {
 			return false
 		}

@@ -26,7 +26,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/util"
-	kruntime "k8s.io/apimachinery/pkg/runtime"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 )
 
@@ -110,12 +109,8 @@ func main() {
 	}
 
 	// Listen for the CRDs we depend on the be available.
-	neededCrds := map[string]kruntime.Object{
-		"clusteringresses.networking.internal.knative.dev": &networkingv1alpha1.ClusterIngress{},
-		"ingresses.networking.internal.knative.dev":        &networkingv1alpha1.Ingress{},
-	}
 	log.Info("Waiting for necessary CRDs to be applied.")
-	if err := util.WaitForCRDs(mgr, stopCh, neededCrds); err != nil {
+	if err := util.WaitForCRDs(mgr, stopCh, &networkingv1alpha1.ClusterIngress{}, &networkingv1alpha1.Ingress{}); err != nil {
 		log.Error(err, "")
 		os.Exit(1)
 	}
