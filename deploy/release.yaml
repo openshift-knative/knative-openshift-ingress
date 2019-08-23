@@ -33,6 +33,12 @@ rules:
   verbs:
   - "*"
 - apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - "*"
+- apiGroups:
   - monitoring.coreos.com
   resources:
   - servicemonitors
