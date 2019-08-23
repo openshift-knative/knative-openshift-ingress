@@ -125,7 +125,7 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 		Spec: routev1.RouteSpec{
 			Host: host,
 			Port: &routev1.RoutePort{
-				TargetPort: intstr.FromString("http"),
+				TargetPort: intstr.FromString("http2"),
 			},
 			To: routev1.RouteTargetReference{
 				Kind: "Service",
