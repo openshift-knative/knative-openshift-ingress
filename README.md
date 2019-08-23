@@ -82,6 +82,9 @@ WATCH_NAMESPACE="" go run cmd/manager/main.go
 This is how I do it, at least. You'll need to change the repos to ones
 that aren't openshift-knative unless you have permission to push there.
 
+Note: Use the version of operator-sdk below that matches the version
+specified in Gopkg.toml.
+
 ```shell
 operator-sdk build quay.io/openshift-knative/knative-openshift-ingress:v0.0.7
 docker push quay.io/openshift-knative/knative-openshift-ingress:v0.0.7
