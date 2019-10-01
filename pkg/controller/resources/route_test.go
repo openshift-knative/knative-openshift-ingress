@@ -264,10 +264,10 @@ func TestMakeRoute(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			routes, err := MakeRoutes(test.ingress)
 			if test.want != nil && !cmp.Equal(routes, test.want) {
-				t.Errorf("Got = %v, want: %v, diff: %s", routes, test.want, cmp.Diff(routes, test.want))
+				t.Errorf("got = %v, want: %v, diff: %s", routes, test.want, cmp.Diff(routes, test.want))
 			}
 			if err != test.wantErr {
-				t.Errorf("Got = %v, want: %v", err, test.wantErr)
+				t.Errorf("got = %v, want: %v", err, test.wantErr)
 			}
 		})
 	}

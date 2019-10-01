@@ -25,7 +25,7 @@ const (
 
 var (
 	// ErrNotSupportedTLSTermination is an error when unsupported TLS termination is configured via annotation.
-	ErrNotSupportedTLSTermination = errors.New("not supported tls termination is specified. Only \"passthrough\" is valid")
+	ErrNotSupportedTLSTermination = errors.New("not supported tls termination is specified, only 'passthrough' is valid")
 
 	// ErrNoValidLoadbalancerDomain indicates that the current ingress does not have a DomainInternal field, or
 	// said field does not contain a value we can work with.
