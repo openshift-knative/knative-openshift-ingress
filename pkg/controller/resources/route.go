@@ -25,12 +25,22 @@ const (
 
 var (
 	// ErrNotSupportedTLSTermination is an error when unsupported TLS termination is configured via annotation.
-	ErrNotSupportedTLSTermination = errors.New("Not supported tls termination is specified. Only \"passthrough\" is valid.")
+	ErrNotSupportedTLSTermination = errors.New("not supported tls termination is specified. Only \"passthrough\" is valid")
+
+	// ErrNoValidLoadbalancerDomain indicates that the current ingress does not have a DomainInternal field, or
+	// said field does not contain a value we can work with.
+	ErrNoValidLoadbalancerDomain = errors.New("unable to find ClusterIngress LoadBalancer with DomainInternal set")
 )
 
 // MakeRoutes creates OpenShift Routes from a Knative Ingress
 func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error) {
 	routes := []*routev1.Route{}
+
+	// Skip all route creation for cluster-local ingresses.
+	if ci.GetSpec().Visibility == networkingv1alpha1.IngressVisibilityClusterLocal {
+		return routes, nil
+	}
+
 	routeIndex := 0
 	for _, rule := range ci.GetSpec().Rules {
 		for _, host := range rule.Hosts {
@@ -62,6 +72,11 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 	annotations := ci.GetAnnotations()
 	if annotations == nil {
 		annotations = make(map[string]string)
+	}
+
+	// Skip making route when visibility of the rule is local only.
+	if rule.Visibility == networkingv1alpha1.IngressVisibilityClusterLocal {
+		return nil, nil
 	}
 
 	// Skip making route when the annotation is specified.
@@ -111,7 +126,7 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 	}
 
 	if serviceName == "" || namespace == "" {
-		return nil, errors.New("Unable to find ClusterIngress LoadBalancer with DomainInternal set")
+		return nil, ErrNoValidLoadbalancerDomain
 	}
 
 	route := &routev1.Route{
