@@ -29,7 +29,7 @@ var (
 
 	// ErrNoValidLoadbalancerDomain indicates that the current ingress does not have a DomainInternal field, or
 	// said field does not contain a value we can work with.
-	ErrNoValidLoadbalancerDomain = errors.New("unable to find ClusterIngress LoadBalancer with DomainInternal set")
+	ErrNoValidLoadbalancerDomain = errors.New("unable to find Ingress LoadBalancer with DomainInternal set")
 )
 
 // MakeRoutes creates OpenShift Routes from a Knative Ingress

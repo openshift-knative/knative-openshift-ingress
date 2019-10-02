@@ -48,9 +48,6 @@ rules:
 - apiGroups:
   - networking.internal.knative.dev
   resources:
-  - clusteringresses
-  - clusteringresses/status
-  - clusteringresses/finalizers
   - ingresses
   - ingresses/status
   - ingresses/finalizers
@@ -110,7 +107,7 @@ spec:
           imagePullPolicy: Always
           env:
             - name: WATCH_NAMESPACE
-              value: "" # watch all namespaces for ClusterIngress
+              value: "" # watch all namespaces for Ingress
             - name: POD_NAME
               valueFrom:
                 fieldRef:
