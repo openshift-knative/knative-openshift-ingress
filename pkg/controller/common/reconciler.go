@@ -26,7 +26,7 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		return r.reconcileDeletion(ctx, ci)
 	}
 
-	logger.Infof("Reconciling clusterIngress :%v", ci)
+	logger.Infof("Reconciling ingress :%v", ci)
 
 	exposed := ci.GetSpec().Visibility == networkingv1alpha1.IngressVisibilityExternalIP
 	if exposed {
@@ -45,7 +45,7 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		r.deleteRoutes(ctx, ci)
 	}
 
-	logger.Info("ClusterIngress successfully synced")
+	logger.Info("Ingress successfully synced")
 	return nil
 }
 
