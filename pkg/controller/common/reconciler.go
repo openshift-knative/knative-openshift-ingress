@@ -3,9 +3,12 @@ package common
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	maistrav1 "github.com/maistra/istio-operator/pkg/apis/maistra/v1"
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/resources"
 	routev1 "github.com/openshift/api/route/v1"
+	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -47,6 +50,36 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		}
 		existingMap := routeMap(existing, selector)
 
+		// get the namespace where operator has been installed
+		ns, err := k8sutil.GetOperatorNamespace()
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				// here knative-openshift-ingress may be running as locally so assuming default namespace as knative-serving
+				ns = "knative-serving"
+			} else {
+				return err
+			}
+		}
+		// update ServiceMeshMemberRole with the namespace info where knative routes created
+		smmr := &maistrav1.ServiceMeshMemberRoll{}
+		if err = r.Client.Get(ctx, types.NamespacedName{Name: "default", Namespace: ns + "-ingress"}, smmr); err != nil {
+			return err
+		}
+		smmr.Spec.Members = func(members []string, ns string) []string {
+			var exist = false
+			for _, val := range members {
+				if val == ns {
+					exist = true
+				}
+			}
+			if !exist {
+				members = append(members, ns)
+			}
+			return members
+		}(smmr.Spec.Members, ci.GetNamespace())
+		if err = r.Client.Update(ctx, smmr); err != nil {
+			return err
+		}
 		routes, err := resources.MakeRoutes(ci)
 		if err != nil {
 			return err

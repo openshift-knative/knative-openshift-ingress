@@ -8,9 +8,8 @@ import (
 	"runtime"
 
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/apis"
-	_ "github.com/openshift-knative/knative-openshift-ingress/pkg/apis/networking/v1alpha1"
-	_ "github.com/openshift-knative/knative-openshift-ingress/pkg/apis/route/v1"
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller"
+	"github.com/openshift-knative/knative-openshift-ingress/pkg/util"
 
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
@@ -25,7 +24,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 
-	"github.com/openshift-knative/knative-openshift-ingress/pkg/util"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 )
 
