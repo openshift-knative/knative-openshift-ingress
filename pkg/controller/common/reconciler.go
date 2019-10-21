@@ -65,19 +65,24 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		if err = r.Client.Get(ctx, types.NamespacedName{Name: "default", Namespace: ns + "-ingress"}, smmr); err != nil {
 			return err
 		}
-		smmr.Spec.Members = func(members []string, ns string) []string {
+		smmr.Spec.Members = func(members []string, routeNamespace string) []string {
 			var exist = false
 			for _, val := range members {
-				if val == ns {
+				if val == routeNamespace {
 					exist = true
+					break
 				}
 			}
 			if !exist {
-				members = append(members, ns)
+				members = append(members, routeNamespace)
 			}
 			return members
 		}(smmr.Spec.Members, ci.GetNamespace())
 		if err = r.Client.Update(ctx, smmr); err != nil {
+			if strings.Contains(err.Error(), "one or more members are already defined in another ServiceMeshMemberRoll") {
+				logger.Errorf("failed to update ServiceMeshMemberRole because namespace %s is already a member of another ServiceMeshMemberRoll", ci.GetNamespace())
+				return nil
+			}
 			return err
 		}
 		routes, err := resources.MakeRoutes(ci)

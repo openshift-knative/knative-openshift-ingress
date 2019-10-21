@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	maistrav1 "github.com/maistra/istio-operator/pkg/apis/maistra/v1"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/common"
@@ -27,11 +28,12 @@ import (
 )
 
 const (
-	name       = "ingress-operator"
-	namespace  = "istio-system"
-	uid        = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
-	domainName = name + "." + namespace + ".default.domainName"
-	routeName0 = "route-" + uid + "-0"
+	name      = "ingress-operator"
+	namespace = "knative-serving-ingress"
+	smmrName  = "default"
+        uid        = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
+        domainName = name + "." + namespace + ".default.domainName"
+        routeName0 = "route-" + uid + "-0"
 )
 
 var (
@@ -56,7 +58,7 @@ var (
 		Status: networkingv1alpha1.IngressStatus{
 			LoadBalancer: &networkingv1alpha1.LoadBalancerStatus{
 				Ingress: []networkingv1alpha1.LoadBalancerIngressStatus{{
-					DomainInternal: "istio-ingressgateway.istio-system.svc.cluster.local",
+					DomainInternal: "istio-ingressgateway." + namespace + ".svc.cluster.local",
 				}},
 			},
 		},
@@ -210,13 +212,22 @@ func TestIngressController(t *testing.T) {
 			// route object
 			route := &routev1.Route{}
 
+			// A ServiceMeshMemberRole resource with metadata
+			smmr := &maistrav1.ServiceMeshMemberRoll{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      smmrName,
+					Namespace: namespace,
+				},
+			}
+
 			// Register operator types with the runtime scheme.
 			s := scheme.Scheme
+			s.AddKnownTypes(maistrav1.SchemeGroupVersion, smmr)
 			s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, defaultIngress)
 			s.AddKnownTypes(routev1.SchemeGroupVersion, route)
 			s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
 			// Create a fake client to mock API calls.
-			cl := fake.NewFakeClient(defaultIngress, route)
+			cl := fake.NewFakeClient(smmr, defaultIngress, route)
 			// Create a Reconcile Ingress object with the scheme and fake client.
 			r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
 
