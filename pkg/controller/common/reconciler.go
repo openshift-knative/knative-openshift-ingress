@@ -8,7 +8,6 @@ import (
 	maistrav1 "github.com/maistra/istio-operator/pkg/apis/maistra/v1"
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/resources"
 	routev1 "github.com/openshift/api/route/v1"
-	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -50,40 +49,27 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		}
 		existingMap := routeMap(existing, selector)
 
-		// get the namespace where operator has been installed
-		ns, err := k8sutil.GetOperatorNamespace()
-		if err != nil {
-			if strings.Contains(err.Error(), "not found") {
-				// here knative-openshift-ingress may be running as locally so assuming default namespace as knative-serving
-				ns = "knative-serving"
-			} else {
-				return err
-			}
-		}
 		// update ServiceMeshMemberRole with the namespace info where knative routes created
 		smmr := &maistrav1.ServiceMeshMemberRoll{}
-		if err = r.Client.Get(ctx, types.NamespacedName{Name: "default", Namespace: ns + "-ingress"}, smmr); err != nil {
+		// Namespace knative-serving-ingress hardcoded for now.
+		// The whole component knative-openshift-ingress is going to be moved into
+		// knative-serving-networking-openshift anyway, where it will be possible to statically determine the namespace to use.
+		if err := r.Client.Get(ctx, types.NamespacedName{Name: "default", Namespace: "knative-serving-ingress"}, smmr); err != nil {
 			return err
 		}
-		smmr.Spec.Members = func(members []string, routeNamespace string) []string {
-			var exist = false
-			for _, val := range members {
-				if val == routeNamespace {
-					exist = true
-					break
+		oldMemberCount := len(smmr.Spec.Members)
+		smmr.Spec.Members = appendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
+		newMemberCount := len(smmr.Spec.Members)
+
+ 		if oldMemberCount < newMemberCount {
+			if err := r.Client.Update(ctx, smmr); err != nil {
+				// ref for substring https://github.com/Maistra/istio-operator/blob/maistra-1.0/pkg/controller/servicemesh/validation/memberroll.go#L95
+				if strings.Contains(err.Error(), "one or more members are already defined in another ServiceMeshMemberRoll") {
+					logger.Errorf("failed to update ServiceMeshMemberRole because namespace %s is already a member of another ServiceMeshMemberRoll", ci.GetNamespace())
+					return nil
 				}
+				return err
 			}
-			if !exist {
-				members = append(members, routeNamespace)
-			}
-			return members
-		}(smmr.Spec.Members, ci.GetNamespace())
-		if err = r.Client.Update(ctx, smmr); err != nil {
-			if strings.Contains(err.Error(), "one or more members are already defined in another ServiceMeshMemberRoll") {
-				logger.Errorf("failed to update ServiceMeshMemberRole because namespace %s is already a member of another ServiceMeshMemberRoll", ci.GetNamespace())
-				return nil
-			}
-			return err
 		}
 		routes, err := resources.MakeRoutes(ci)
 		if err != nil {
@@ -137,7 +123,22 @@ func routeLabelFilter(route routev1.Route, selector map[string]string) bool {
 	return true
 }
 
-func (r *BaseIngressReconciler) deleteRoute(ctx context.Context, route *routev1.Route) error {
+// appendIfAbsent append namespace to member if its not exist
+func appendIfAbsent(members []string, routeNamespace string) []string {
+	var exist = false
+	for _, val := range members {
+		if val == routeNamespace {
+			exist = true
+			break
+		}
+	}
+	if !exist {
+		members = append(members, routeNamespace)
+	}
+	return members
+}
+
+func (r *BaseIngressReconciler) deleteRoutes(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
 	logger := logging.FromContext(ctx)
 	logger.Infof("Deleting OpenShift Route for host %s", route.Spec.Host)
 	if err := r.Client.Delete(ctx, route); err != nil {
