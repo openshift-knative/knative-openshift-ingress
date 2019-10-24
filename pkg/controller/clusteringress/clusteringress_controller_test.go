@@ -109,10 +109,7 @@ func TestClusterIngressController(t *testing.T) {
 	if err := cl.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmr); err != nil {
 		t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
 	}
-	for i := range smmr.Spec.Members {
-		assert.Equal(t, namespace, smmr.Spec.Members[i])
-	}
-
+	assert.Equal(t, []string{namespace}, smmr.Spec.Members)
 	// Check if route has been created
 	routes := &routev1.Route{}
 
