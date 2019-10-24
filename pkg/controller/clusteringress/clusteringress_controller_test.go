@@ -28,9 +28,10 @@ func TestClusterIngressController(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
 	var (
-		name      = "clusteringress-operator"
-		namespace = "knative-serving-ingress"
-		smmrName  = "default"
+		name                 = "clusteringress-operator"
+		serviceMeshNamespace = "knative-serving-ingress"
+		smmrName             = "default"
+		namespace            = "clusteringress-namespace"
                 uid        = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
                 domainName = name + "." + namespace + ".default.domainName"
                 routeName0 = "route-" + uid + "-0"
@@ -40,7 +41,7 @@ func TestClusterIngressController(t *testing.T) {
 	smmr := &maistrav1.ServiceMeshMemberRoll{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      smmrName,
-			Namespace: namespace,
+			Namespace: serviceMeshNamespace,
 		},
 	}
 	// A ClusterIngress resource with metadata and spec.
@@ -64,7 +65,7 @@ func TestClusterIngressController(t *testing.T) {
 		Status: networkingv1alpha1.IngressStatus{
 			LoadBalancer: &networkingv1alpha1.LoadBalancerStatus{
 				Ingress: []networkingv1alpha1.LoadBalancerIngressStatus{{
-					DomainInternal: "istio-ingressgateway." + namespace + ".svc.cluster.local",
+					DomainInternal: "istio-ingressgateway." + serviceMeshNamespace + ".svc.cluster.local",
 				}},
 			},
 		},
@@ -104,10 +105,18 @@ func TestClusterIngressController(t *testing.T) {
 		t.Fatalf("reconcile: (%v)", err)
 	}
 
+	// Check if namespace has been added to smmr
+	if err := cl.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmr); err != nil {
+		t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
+	}
+	for i := range smmr.Spec.Members {
+		assert.Equal(t, namespace, smmr.Spec.Members[i])
+	}
+
 	// Check if route has been created
 	routes := &routev1.Route{}
 
-	err = cl.Get(context.TODO(), types.NamespacedName{Name: routeName0, Namespace: namespace}, routes)
+	err = cl.Get(context.TODO(), types.NamespacedName{Name: routeName0, Namespace: serviceMeshNamespace}, routes)
 	if err != nil {
 		t.Fatalf("get route: (%v)", err)
 	}

@@ -69,6 +69,13 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 					return nil
 				}
 				return err
+		smmr.Spec.Members = appendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
+
+		if err := r.Client.Update(ctx, smmr); err != nil {
+			// ref for substring https://github.com/Maistra/istio-operator/blob/maistra-1.0/pkg/controller/servicemesh/validation/memberroll.go#L95
+			if strings.Contains(err.Error(), "one or more members are already defined in another ServiceMeshMemberRoll") {
+				logger.Errorf("failed to update ServiceMeshMemberRole because namespace %s is already a member of another ServiceMeshMemberRoll", ci.GetNamespace())
+				return nil
 			}
 		}
 		routes, err := resources.MakeRoutes(ci)
