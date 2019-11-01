@@ -12,6 +12,7 @@ import (
 	"knative.dev/pkg/logging"
 	"knative.dev/serving/pkg/apis/networking"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
+	"knative.dev/serving/pkg/apis/serving"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -30,9 +31,12 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 
 	exposed := ci.GetSpec().Visibility == networkingv1alpha1.IngressVisibilityExternalIP
 	if exposed {
+		ingressLabels := ci.GetLabels()
 		listOpts := &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
-				networking.IngressLabelKey: ci.GetName(),
+				networking.IngressLabelKey:     ci.GetName(),
+				serving.RouteLabelKey:          ingressLabels[serving.RouteLabelKey],
+				serving.RouteNamespaceLabelKey: ingressLabels[serving.RouteNamespaceLabelKey],
 			}),
 		}
 		var existing routev1.RouteList
@@ -52,10 +56,12 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 			}
 			delete(existingMap, route.Name)
 		}
-		// If routes remains in existingMap, it must be obsoleted routes. Clean up them.
+		// If routes remains in existingMap, it must be obsoleted routes. Clean them up.
 		for _, rt := range existingMap {
 			logger.Infof("Deleting obsoleted route: %s", rt.Name)
-			r.deleteRoute(ctx, rt)
+			if err := r.deleteRoute(ctx, rt); err != nil {
+				logger.Warnf("Failed to delete obsoleted route %s: %v", rt.Name, err)
+			}
 		}
 	} else {
 		r.deleteRoutes(ctx, ci)
@@ -66,7 +72,7 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 }
 
 func routeMap(routes routev1.RouteList) map[string]*routev1.Route {
-	mp := map[string]*routev1.Route{}
+	mp := make(map[string]*routev1.Route, len(routes.Items))
 	for _, route := range routes.Items {
 		mp[route.Name] = &route
 	}

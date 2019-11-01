@@ -58,58 +58,55 @@ var (
 func TestRouteMigration(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
-	tests := []struct {
+	test := struct {
 		name        string
 		exRoute     *routev1.Route
 		wantName    string
 		removedName string
 	}{
-		{
-			name: "Clean up old route and new route is generated",
-			exRoute: &routev1.Route{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-0"},
-				Spec:       routev1.RouteSpec{Host: domainName},
-			},
-			wantName:    domainName,
-			removedName: "test-0",
+		name: "Clean up old route and new route is generated",
+		exRoute: &routev1.Route{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-0"},
+			Spec:       routev1.RouteSpec{Host: domainName},
 		},
+		wantName:    domainName,
+		removedName: "test-0",
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Register operator types with the runtime scheme.
-			s := scheme.Scheme
-			s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, defaultIngress)
-			s.AddKnownTypes(routev1.SchemeGroupVersion, test.exRoute)
-			s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
-			// Create a fake client to mock API calls.
-			cl := fake.NewFakeClient(defaultIngress, test.exRoute)
-			// Create a Reconcile Ingress object with the scheme and fake client.
-			r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
-			// Mock request to simulate Reconcile() being called on an event for a
-			// watched resource .
-			req := reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      name,
-					Namespace: namespace,
-				},
-			}
-			if _, err := r.Reconcile(req); err != nil {
-				t.Fatalf("reconcile: (%v)", err)
-			}
+	t.Run(test.name, func(t *testing.T) {
+		// Register operator types with the runtime scheme.
+		s := scheme.Scheme
+		s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, defaultIngress)
+		s.AddKnownTypes(routev1.SchemeGroupVersion, test.exRoute)
+		s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
+		// Create a fake client to mock API calls.
+		cl := fake.NewFakeClient(defaultIngress, test.exRoute)
+		// Create a Reconcile Ingress object with the scheme and fake client.
+		r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
+		// Mock request to simulate Reconcile() being called on an event for a
+		// watched resource .
+		req := reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      name,
+				Namespace: namespace,
+			},
+		}
+		if _, err := r.Reconcile(req); err != nil {
+			t.Fatalf("reconcile: (%v)", err)
+		}
 
-			// Check if ex-Route has been reconciled with new name.
-			route := &routev1.Route{}
-			err := cl.Get(context.TODO(), types.NamespacedName{Name: test.wantName, Namespace: namespace}, route)
-			assert.Nil(t, err)
-			assert.Equal(t, test.exRoute.Spec.Host, route.Spec.Host)
+		// Check if ex-Route has been reconciled with new name.
+		route := &routev1.Route{}
+		err := cl.Get(context.TODO(), types.NamespacedName{Name: test.wantName, Namespace: namespace}, route)
+		assert.Nil(t, err)
+		// Check if new Route has same spec.Host with ex-Route's
+		assert.Equal(t, test.exRoute.Spec.Host, route.Spec.Host)
 
-			// Check if ex-Route has been deleted.
-			err = cl.Get(context.TODO(), types.NamespacedName{Name: test.removedName, Namespace: namespace}, route)
-			assert.True(t, errors.IsNotFound(err))
+		// Check if ex-Route has been deleted.
+		err = cl.Get(context.TODO(), types.NamespacedName{Name: test.removedName, Namespace: namespace}, route)
+		assert.True(t, errors.IsNotFound(err))
 
-		})
-	}
+	})
 }
 
 // TestIngressController runs Reconcile ReconcileIngress.Reconcile() against a
