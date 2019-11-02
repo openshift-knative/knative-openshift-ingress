@@ -59,7 +59,7 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		}
 		// If routes remains in existingMap, it must be obsoleted routes. Clean them up.
 		for _, rt := range existingMap {
-			logger.Infof("Deleting obsoleted route: %s", rt.Name)
+			logger.Infof("Deleting obsoleted route for host: %s", rt.Spec.Host)
 			if err := r.deleteRoute(ctx, rt); err != nil {
 				return err
 			}
