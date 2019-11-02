@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"sort"
-
 	"github.com/stretchr/testify/assert"
 
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/common"
@@ -16,7 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/scheme"
+	"knative.dev/pkg/kmeta"
 	"knative.dev/serving/pkg/apis/networking"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"knative.dev/serving/pkg/apis/serving"
@@ -72,52 +72,57 @@ func TestRouteMigration(t *testing.T) {
 		want  []routev1.Route
 	}{
 		name: "Clean up old route and new route is generated",
-		state: []routev1.Route{
-			routev1.Route{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   "to-be-reconciled-0",
-					Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
-				},
-				Spec: routev1.RouteSpec{Host: domainName},
+
+		state: []routev1.Route{{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "to-be-reconciled-0",
+				Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
 			},
-			routev1.Route{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   "no-remove-missing-label",
-					Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name},
-				},
-				Spec: routev1.RouteSpec{Host: "b.example.com"},
+			Spec: routev1.RouteSpec{Host: domainName},
+		}, {
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "no-remove-missing-label",
+				Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name},
 			},
-			routev1.Route{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   "no-remove-other-label",
-					Labels: map[string]string{networking.IngressLabelKey: "another", serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
-				},
-				Spec: routev1.RouteSpec{Host: "c.example.com"},
+			Spec: routev1.RouteSpec{Host: "b.example.com"},
+		}, {
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "no-remove-other-label",
+				Labels: map[string]string{networking.IngressLabelKey: "another", serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
 			},
-		},
-		want: []routev1.Route{
-			routev1.Route{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   routeName0,
-					Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
-				},
-				Spec: routev1.RouteSpec{Host: domainName},
+			Spec: routev1.RouteSpec{Host: "c.example.com"},
+		}},
+		want: []routev1.Route{{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:            routeName0,
+				Namespace:       "istio-system",
+				Labels:          map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
+				Annotations:     map[string]string{"haproxy.router.openshift.io/timeout": "5s"},
+				OwnerReferences: []metav1.OwnerReference{*kmeta.NewControllerRef(defaultIngress)},
 			},
-			routev1.Route{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   "no-remove-missing-label",
-					Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name},
+			Spec: routev1.RouteSpec{
+				Host: domainName,
+				To: routev1.RouteTargetReference{
+					Kind: "Service",
+					Name: "istio-ingressgateway",
 				},
-				Spec: routev1.RouteSpec{Host: "b.example.com"},
-			},
-			routev1.Route{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   "no-remove-other-label",
-					Labels: map[string]string{networking.IngressLabelKey: "another", serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
+				Port: &routev1.RoutePort{
+					TargetPort: intstr.FromString("http2"),
 				},
-				Spec: routev1.RouteSpec{Host: "c.example.com"},
 			},
-		},
+		}, {
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "no-remove-missing-label",
+				Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name},
+			},
+			Spec: routev1.RouteSpec{Host: "b.example.com"},
+		}, {
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "no-remove-other-label",
+				Labels: map[string]string{networking.IngressLabelKey: "another", serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
+			},
+			Spec: routev1.RouteSpec{Host: "c.example.com"},
+		}},
 	}
 
 	t.Run(test.name, func(t *testing.T) {
@@ -149,15 +154,7 @@ func TestRouteMigration(t *testing.T) {
 		assert.Nil(t, err)
 
 		routes := routeList.Items
-		assert.Equal(t, len(test.want), len(routes))
-		sort.Slice(routes, func(i, j int) bool { return routes[i].Name < routes[j].Name })
-		sort.Slice(test.want, func(i, j int) bool { return test.want[i].Name < test.want[j].Name })
-
-		for i, route := range routeList.Items {
-			assert.Equal(t, route.Name, test.want[i].Name)
-			assert.Equal(t, route.Spec.Host, test.want[i].Spec.Host)
-			assert.Equal(t, route.Labels, test.want[i].Labels)
-		}
+		assert.ElementsMatch(t, routes, test.want)
 	})
 }
 
