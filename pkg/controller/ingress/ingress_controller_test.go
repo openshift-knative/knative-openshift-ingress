@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
+	"knative.dev/serving/pkg/apis/networking"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"knative.dev/serving/pkg/apis/serving"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -36,6 +37,7 @@ var (
 			Name:      name,
 			Namespace: namespace,
 			UID:       uid,
+			Labels:    map[string]string{serving.RouteNamespaceLabelKey: namespace, serving.RouteLabelKey: name},
 		},
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
@@ -62,18 +64,35 @@ func TestRouteMigration(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
 	test := struct {
-		name        string
-		exRoute     *routev1.Route
-		wantName    string
-		removedName string
+		name            string
+		exRoute         *routev1.Route
+		noLabelRoute    *routev1.Route
+		otherLabelRoute *routev1.Route
+		wantName        string
 	}{
 		name: "Clean up old route and new route is generated",
 		exRoute: &routev1.Route{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-0"},
-			Spec:       routev1.RouteSpec{Host: domainName},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "test-0",
+				Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
+			},
+			Spec: routev1.RouteSpec{Host: domainName},
 		},
-		wantName:    routeName0,
-		removedName: "test-0",
+		noLabelRoute: &routev1.Route{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "no-remove-1",
+				Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name},
+			},
+			Spec: routev1.RouteSpec{Host: domainName},
+		},
+		otherLabelRoute: &routev1.Route{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "no-remove-2",
+				Labels: map[string]string{networking.IngressLabelKey: "another", serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
+			},
+			Spec: routev1.RouteSpec{Host: domainName},
+		},
+		wantName: routeName0,
 	}
 
 	t.Run(test.name, func(t *testing.T) {
@@ -82,8 +101,10 @@ func TestRouteMigration(t *testing.T) {
 		s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, defaultIngress)
 		s.AddKnownTypes(routev1.SchemeGroupVersion, test.exRoute)
 		s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
+
 		// Create a fake client to mock API calls.
-		cl := fake.NewFakeClient(defaultIngress, test.exRoute)
+		cl := fake.NewFakeClient(defaultIngress, test.exRoute, test.noLabelRoute, test.otherLabelRoute)
+
 		// Create a Reconcile Ingress object with the scheme and fake client.
 		r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
 		// Mock request to simulate Reconcile() being called on an event for a
@@ -98,17 +119,26 @@ func TestRouteMigration(t *testing.T) {
 			t.Fatalf("reconcile: (%v)", err)
 		}
 
-		// Check if ex-Route has been reconciled with new name.
 		route := &routev1.Route{}
-		err := cl.Get(context.TODO(), types.NamespacedName{Name: test.wantName, Namespace: namespace}, route)
+		// Check if ex-Route has been reconciled with new name.
+		err := cl.Get(context.TODO(), types.NamespacedName{Name: test.wantName}, route)
 		assert.Nil(t, err)
 		// Check if new Route has same spec.Host with ex-Route's
 		assert.Equal(t, test.exRoute.Spec.Host, route.Spec.Host)
 
 		// Check if ex-Route has been deleted.
-		err = cl.Get(context.TODO(), types.NamespacedName{Name: test.removedName, Namespace: namespace}, route)
+		err = cl.Get(context.TODO(), types.NamespacedName{Name: test.exRoute.Name}, route)
 		assert.True(t, errors.IsNotFound(err))
 
+		// Check if noLabelRoute has NOT been deleted.
+		err = cl.Get(context.TODO(), types.NamespacedName{Name: test.noLabelRoute.Name}, route)
+		assert.Nil(t, err)
+		assert.Equal(t, test.noLabelRoute.Spec.Host, route.Spec.Host)
+
+		// Check if otherLabelRoute has NOT been deleted.
+		err = cl.Get(context.TODO(), types.NamespacedName{Name: test.otherLabelRoute.Name}, route)
+		assert.Nil(t, err)
+		assert.Equal(t, test.otherLabelRoute.Spec.Host, route.Spec.Host)
 	})
 }
 
