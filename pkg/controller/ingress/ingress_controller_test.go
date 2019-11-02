@@ -25,7 +25,9 @@ import (
 const (
 	name       = "ingress-operator"
 	namespace  = "istio-system"
+	uid        = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
 	domainName = name + "." + namespace + ".default.domainName"
+	routeName0 = "route-" + uid + "-0"
 )
 
 var (
@@ -33,6 +35,7 @@ var (
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
+			UID:       uid,
 		},
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
@@ -69,7 +72,7 @@ func TestRouteMigration(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "test-0"},
 			Spec:       routev1.RouteSpec{Host: domainName},
 		},
-		wantName:    domainName,
+		wantName:    routeName0,
 		removedName: "test-0",
 	}
 
@@ -185,7 +188,7 @@ func TestIngressController(t *testing.T) {
 
 			// Check if route has been created
 			routes := &routev1.Route{}
-			err := cl.Get(context.TODO(), types.NamespacedName{Name: domainName, Namespace: namespace}, routes)
+			err := cl.Get(context.TODO(), types.NamespacedName{Name: routeName0, Namespace: namespace}, routes)
 
 			assert.True(t, test.wantErr(err))
 			assert.Equal(t, test.want, routes.ObjectMeta.Annotations)
