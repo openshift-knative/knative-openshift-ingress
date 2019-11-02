@@ -53,7 +53,7 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		for _, route := range routes {
 			logger.Infof("Creating/Updating OpenShift Route for host %s", route.Spec.Host)
 			if err := r.reconcileRoute(ctx, ci, route); err != nil {
-				return err
+				return fmt.Errorf("failed to create route for host %s: %v", route.Spec.Host, err)
 			}
 			delete(existingMap, route.Name)
 		}
