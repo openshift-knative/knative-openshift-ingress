@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/resources"
 	routev1 "github.com/openshift/api/route/v1"
@@ -60,11 +61,13 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		for _, rt := range existingMap {
 			logger.Infof("Deleting obsoleted route: %s", rt.Name)
 			if err := r.deleteRoute(ctx, rt); err != nil {
-				logger.Warnf("Failed to delete obsoleted route %s: %v", rt.Name, err)
+				return err
 			}
 		}
 	} else {
-		r.deleteRoutes(ctx, ci)
+		if err := r.deleteRoutes(ctx, ci); err != nil {
+			return err
+		}
 	}
 
 	logger.Info("Ingress successfully synced")
@@ -83,7 +86,7 @@ func (r *BaseIngressReconciler) deleteRoute(ctx context.Context, route *routev1.
 	logger := logging.FromContext(ctx)
 	logger.Infof("Deleting OpenShift Route for host %s", route.Spec.Host)
 	if err := r.Client.Delete(ctx, route); err != nil {
-		return err
+		return fmt.Errorf("failed to delete obsoleted route for host %s: %v", route.Spec.Host, err)
 	}
 	logger.Infof("Deleted OpenShift Route %q in namespace %q", route.Name, route.Namespace)
 	return nil
