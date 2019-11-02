@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"sort"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/common"
@@ -18,6 +20,7 @@ import (
 	"knative.dev/serving/pkg/apis/networking"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"knative.dev/serving/pkg/apis/serving"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
@@ -64,46 +67,68 @@ func TestRouteMigration(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
 	test := struct {
-		name            string
-		exRoute         *routev1.Route
-		noLabelRoute    *routev1.Route
-		otherLabelRoute *routev1.Route
-		wantName        string
+		name  string
+		state []routev1.Route
+		want  []routev1.Route
 	}{
 		name: "Clean up old route and new route is generated",
-		exRoute: &routev1.Route{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "test-0",
-				Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
+		state: []routev1.Route{
+			routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "to-be-reconciled-0",
+					Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
+				},
+				Spec: routev1.RouteSpec{Host: domainName},
 			},
-			Spec: routev1.RouteSpec{Host: domainName},
-		},
-		noLabelRoute: &routev1.Route{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "no-remove-1",
-				Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name},
+			routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "no-remove-missing-label",
+					Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name},
+				},
+				Spec: routev1.RouteSpec{Host: "b.example.com"},
 			},
-			Spec: routev1.RouteSpec{Host: domainName},
-		},
-		otherLabelRoute: &routev1.Route{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "no-remove-2",
-				Labels: map[string]string{networking.IngressLabelKey: "another", serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
+			routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "no-remove-other-label",
+					Labels: map[string]string{networking.IngressLabelKey: "another", serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
+				},
+				Spec: routev1.RouteSpec{Host: "c.example.com"},
 			},
-			Spec: routev1.RouteSpec{Host: domainName},
 		},
-		wantName: routeName0,
+		want: []routev1.Route{
+			routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   routeName0,
+					Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
+				},
+				Spec: routev1.RouteSpec{Host: domainName},
+			},
+			routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "no-remove-missing-label",
+					Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name},
+				},
+				Spec: routev1.RouteSpec{Host: "b.example.com"},
+			},
+			routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "no-remove-other-label",
+					Labels: map[string]string{networking.IngressLabelKey: "another", serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
+				},
+				Spec: routev1.RouteSpec{Host: "c.example.com"},
+			},
+		},
 	}
 
 	t.Run(test.name, func(t *testing.T) {
 		// Register operator types with the runtime scheme.
 		s := scheme.Scheme
 		s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, defaultIngress)
-		s.AddKnownTypes(routev1.SchemeGroupVersion, test.exRoute)
+		s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.Route{})
 		s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
 
 		// Create a fake client to mock API calls.
-		cl := fake.NewFakeClient(defaultIngress, test.exRoute, test.noLabelRoute, test.otherLabelRoute)
+		cl := fake.NewFakeClient(defaultIngress, &routev1.RouteList{Items: test.state})
 
 		// Create a Reconcile Ingress object with the scheme and fake client.
 		r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
@@ -119,26 +144,20 @@ func TestRouteMigration(t *testing.T) {
 			t.Fatalf("reconcile: (%v)", err)
 		}
 
-		route := &routev1.Route{}
-		// Check if ex-Route has been reconciled with new name.
-		err := cl.Get(context.TODO(), types.NamespacedName{Name: test.wantName}, route)
+		routeList := &routev1.RouteList{}
+		err := cl.List(context.TODO(), &client.ListOptions{}, routeList)
 		assert.Nil(t, err)
-		// Check if new Route has same spec.Host with ex-Route's
-		assert.Equal(t, test.exRoute.Spec.Host, route.Spec.Host)
 
-		// Check if ex-Route has been deleted.
-		err = cl.Get(context.TODO(), types.NamespacedName{Name: test.exRoute.Name}, route)
-		assert.True(t, errors.IsNotFound(err))
+		routes := routeList.Items
+		assert.Equal(t, len(test.want), len(routes))
+		sort.Slice(routes, func(i, j int) bool { return routes[i].Name < routes[j].Name })
+		sort.Slice(test.want, func(i, j int) bool { return test.want[i].Name < test.want[j].Name })
 
-		// Check if noLabelRoute has NOT been deleted.
-		err = cl.Get(context.TODO(), types.NamespacedName{Name: test.noLabelRoute.Name}, route)
-		assert.Nil(t, err)
-		assert.Equal(t, test.noLabelRoute.Spec.Host, route.Spec.Host)
-
-		// Check if otherLabelRoute has NOT been deleted.
-		err = cl.Get(context.TODO(), types.NamespacedName{Name: test.otherLabelRoute.Name}, route)
-		assert.Nil(t, err)
-		assert.Equal(t, test.otherLabelRoute.Spec.Host, route.Spec.Host)
+		for i, route := range routeList.Items {
+			assert.Equal(t, route.Name, test.want[i].Name)
+			assert.Equal(t, route.Spec.Host, test.want[i].Spec.Host)
+			assert.Equal(t, route.Labels, test.want[i].Labels)
+		}
 	})
 }
 
