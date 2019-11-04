@@ -108,7 +108,7 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, index int, ru
 	labels[serving.RouteLabelKey] = ingressLabels[serving.RouteLabelKey]
 	labels[serving.RouteNamespaceLabelKey] = ingressLabels[serving.RouteNamespaceLabelKey]
 
-	name := fmt.Sprintf("%s-%d", ci.GetName(), index)
+	name := fmt.Sprintf("route-%s-%d", ci.GetUID(), index)
 	serviceName := ""
 	namespace := ""
 	if ci.GetStatus().LoadBalancer != nil {

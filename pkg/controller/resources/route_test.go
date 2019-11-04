@@ -22,6 +22,10 @@ const (
 
 	lbService   = "lb-service"
 	lbNamespace = "lb-namespace"
+
+	uid        = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
+	routeName0 = "route-" + uid + "-0"
+	routeName1 = "route-" + uid + "-1"
 )
 
 var ownerRef = *kmeta.NewControllerRef(ingress())
@@ -62,7 +66,7 @@ func TestMakeRoute(t *testing.T) {
 						TimeoutAnnotation: "600s",
 					},
 					Namespace: lbNamespace,
-					Name:      "ingress-0",
+					Name:      routeName0,
 				},
 				Spec: routev1.RouteSpec{
 					Host: externalDomain,
@@ -107,7 +111,7 @@ func TestMakeRoute(t *testing.T) {
 						TimeoutAnnotation: "3600s",
 					},
 					Namespace: lbNamespace,
-					Name:      "ingress-0",
+					Name:      routeName0,
 				},
 				Spec: routev1.RouteSpec{
 					Host: externalDomain,
@@ -139,7 +143,7 @@ func TestMakeRoute(t *testing.T) {
 						TimeoutAnnotation: "600s",
 					},
 					Namespace: lbNamespace,
-					Name:      "ingress-0",
+					Name:      routeName0,
 				},
 				Spec: routev1.RouteSpec{
 					Host: externalDomain,
@@ -163,7 +167,7 @@ func TestMakeRoute(t *testing.T) {
 						TimeoutAnnotation: "600s",
 					},
 					Namespace: lbNamespace,
-					Name:      "ingress-1",
+					Name:      routeName1,
 				},
 				Spec: routev1.RouteSpec{
 					Host: externalDomain2,
@@ -195,7 +199,7 @@ func TestMakeRoute(t *testing.T) {
 						TimeoutAnnotation: "600s",
 					},
 					Namespace: lbNamespace,
-					Name:      "ingress-1",
+					Name:      routeName1,
 				},
 				Spec: routev1.RouteSpec{
 					Host: externalDomain2,
@@ -234,7 +238,7 @@ func TestMakeRoute(t *testing.T) {
 						TLSTerminationAnnotation: "passthrough",
 					},
 					Namespace: lbNamespace,
-					Name:      "ingress-0",
+					Name:      routeName0,
 				},
 				Spec: routev1.RouteSpec{
 					Host: externalDomain,
@@ -282,6 +286,7 @@ func ingress(options ...ingressOption) networkingv1alpha1.IngressAccessor {
 			},
 			Namespace: "default",
 			Name:      "ingress",
+			UID:       uid,
 		},
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
