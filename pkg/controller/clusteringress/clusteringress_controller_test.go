@@ -27,8 +27,11 @@ func TestClusterIngressController(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
 	var (
-		name      = "clusteringress-operator"
-		namespace = "istio-system"
+		name       = "clusteringress-operator"
+		namespace  = "istio-system"
+		uid        = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
+		domainName = name + "." + namespace + ".default.domainName"
+		routeName0 = "route-" + uid + "-0"
 	)
 
 	// A ClusterIngress resource with metadata and spec.
@@ -36,11 +39,12 @@ func TestClusterIngressController(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
+			UID:       types.UID(uid),
 		},
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
 			Rules: []networkingv1alpha1.IngressRule{{
-				Hosts: []string{"public.default.domainName"},
+				Hosts: []string{domainName},
 				HTTP: &networkingv1alpha1.HTTPIngressRuleValue{
 					Paths: []networkingv1alpha1.HTTPIngressPath{{
 						Timeout: &metav1.Duration{Duration: 5 * time.Second},
@@ -70,6 +74,7 @@ func TestClusterIngressController(t *testing.T) {
 	s := scheme.Scheme
 	s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, clusteringress)
 	s.AddKnownTypes(routev1.SchemeGroupVersion, route)
+	s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
 	// Create a fake client to mock API calls.
 	cl := fake.NewFakeClient(objs...)
 	// Create a Reconcile ClusterIngress object with the scheme and fake client.
@@ -91,7 +96,7 @@ func TestClusterIngressController(t *testing.T) {
 	// Check if route has been created
 	routes := &routev1.Route{}
 
-	err = cl.Get(context.TODO(), types.NamespacedName{Name: "clusteringress-operator-0", Namespace: "istio-system"}, routes)
+	err = cl.Get(context.TODO(), types.NamespacedName{Name: routeName0, Namespace: "istio-system"}, routes)
 	if err != nil {
 		t.Fatalf("get route: (%v)", err)
 	}
