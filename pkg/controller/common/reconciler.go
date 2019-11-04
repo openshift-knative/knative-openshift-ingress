@@ -61,17 +61,6 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		smmr.Spec.Members = appendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
 		newMemberCount := len(smmr.Spec.Members)
 
- 		if oldMemberCount < newMemberCount {
-			if err := r.Client.Update(ctx, smmr); err != nil {
-				// ref for substring https://github.com/Maistra/istio-operator/blob/maistra-1.0/pkg/controller/servicemesh/validation/memberroll.go#L95
-				if strings.Contains(err.Error(), "one or more members are already defined in another ServiceMeshMemberRoll") {
-					logger.Errorf("failed to update ServiceMeshMemberRole because namespace %s is already a member of another ServiceMeshMemberRoll", ci.GetNamespace())
-					return nil
-				}
-				return err
-		smmr.Spec.Members = appendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
-		newMemberCount := len(smmr.Spec.Members)
-
 		if oldMemberCount < newMemberCount {
 			if err := r.Client.Update(ctx, smmr); err != nil {
 				// ref for substring https://github.com/Maistra/istio-operator/blob/maistra-1.0/pkg/controller/servicemesh/validation/memberroll.go#L95
@@ -134,22 +123,7 @@ func routeLabelFilter(route routev1.Route, selector map[string]string) bool {
 	return true
 }
 
-// appendIfAbsent append namespace to member if its not exist
-func appendIfAbsent(members []string, routeNamespace string) []string {
-	var exist = false
-	for _, val := range members {
-		if val == routeNamespace {
-			exist = true
-			break
-		}
-	}
-	if !exist {
-		members = append(members, routeNamespace)
-	}
-	return members
-}
-
-func (r *BaseIngressReconciler) deleteRoutes(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
+func (r *BaseIngressReconciler) deleteRoute(ctx context.Context, route *routev1.Route) error {
 	logger := logging.FromContext(ctx)
 	logger.Infof("Deleting OpenShift Route for host %s", route.Spec.Host)
 	if err := r.Client.Delete(ctx, route); err != nil {
@@ -214,4 +188,19 @@ func (r *BaseIngressReconciler) reconcileDeletion(ctx context.Context, ci networ
 	// cluster-scoped ClusterIngress to a namespace-scoped K8s
 	// Service.
 	return nil
+}
+
+// appendIfAbsent append namespace to member if its not exist
+func appendIfAbsent(members []string, routeNamespace string) []string {
+	var exist = false
+	for _, val := range members {
+		if val == routeNamespace {
+			exist = true
+			break
+		}
+	}
+	if !exist {
+		members = append(members, routeNamespace)
+	}
+	return members
 }

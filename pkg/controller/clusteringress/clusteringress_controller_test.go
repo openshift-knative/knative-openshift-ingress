@@ -32,9 +32,9 @@ func TestClusterIngressController(t *testing.T) {
 		serviceMeshNamespace = "knative-serving-ingress"
 		smmrName             = "default"
 		namespace            = "clusteringress-namespace"
-                uid        = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
-                domainName = name + "." + namespace + ".default.domainName"
-                routeName0 = "route-" + uid + "-0"
+		uid                  = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
+		domainName           = name + "." + namespace + ".default.domainName"
+		routeName0           = "route-" + uid + "-0"
 	)
 
 	// A ServiceMeshMemberRole resource with metadata
@@ -100,8 +100,7 @@ func TestClusterIngressController(t *testing.T) {
 			Namespace: namespace,
 		},
 	}
-	_, err := r.Reconcile(req)
-	if err != nil {
+	if _, err := r.Reconcile(req); err != nil {
 		t.Fatalf("reconcile: (%v)", err)
 	}
 
@@ -113,8 +112,7 @@ func TestClusterIngressController(t *testing.T) {
 	// Check if route has been created
 	routes := &routev1.Route{}
 
-	err = cl.Get(context.TODO(), types.NamespacedName{Name: routeName0, Namespace: serviceMeshNamespace}, routes)
-	if err != nil {
+	if err := cl.Get(context.TODO(), types.NamespacedName{Name: routeName0, Namespace: serviceMeshNamespace}, routes); err != nil {
 		t.Fatalf("get route: (%v)", err)
 	}
 
