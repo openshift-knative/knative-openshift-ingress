@@ -107,7 +107,9 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// Don't modify the informer's copy
 	ci := original.DeepCopy()
-	err = r.base.ReconcileIngress(ctx, ci)
+	if err = r.base.ReconcileIngress(ctx, ci); err != nil {
+		return reconcile.Result{}, err
+	}
 	if equality.Semantic.DeepEqual(original.Status, ci.Status) {
 		// If we didn't change anything then don't call updateStatus.
 		// This is important because the copy we loaded from the informer's
