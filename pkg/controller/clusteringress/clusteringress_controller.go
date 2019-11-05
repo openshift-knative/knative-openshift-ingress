@@ -111,6 +111,7 @@ func (r *ReconcileClusterIngress) Reconcile(request reconcile.Request) (reconcil
 		// to status with this stale state.
 	} else if _, err := r.updateStatus(ctx, ci); err != nil {
 		logger.Errorf("Failed to update clusterIngress status %v", err)
+		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{}, reconcileErr

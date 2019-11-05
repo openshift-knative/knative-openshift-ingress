@@ -116,6 +116,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 	} else if _, err := r.updateStatus(ctx, ci); err != nil {
 		logger.Errorf("Failed to update ingress status %v", err)
 		r.recorder.Event(ci, corev1.EventTypeWarning, "SyncError", err.Error())
+		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{}, reconcileErr
