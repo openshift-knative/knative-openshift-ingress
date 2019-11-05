@@ -57,11 +57,10 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		if err := r.Client.Get(ctx, types.NamespacedName{Name: "default", Namespace: "knative-serving-ingress"}, smmr); err != nil {
 			return err
 		}
-		oldMemberCount := len(smmr.Spec.Members)
-		smmr.Spec.Members = appendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
-		newMemberCount := len(smmr.Spec.Members)
+		newMembers, changed := appendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
+		smmr.Spec.Members = newMembers
 
-		if oldMemberCount < newMemberCount {
+		if changed {
 			if err := r.Client.Update(ctx, smmr); err != nil {
 				// ref for substring https://github.com/Maistra/istio-operator/blob/maistra-1.0/pkg/controller/servicemesh/validation/memberroll.go#L95
 				if strings.Contains(err.Error(), "one or more members are already defined in another ServiceMeshMemberRoll") {
@@ -191,16 +190,11 @@ func (r *BaseIngressReconciler) reconcileDeletion(ctx context.Context, ci networ
 }
 
 // appendIfAbsent append namespace to member if its not exist
-func appendIfAbsent(members []string, routeNamespace string) []string {
-	var exist = false
+func appendIfAbsent(members []string, routeNamespace string) ([]string, bool) {
 	for _, val := range members {
 		if val == routeNamespace {
-			exist = true
-			break
+			return members, false
 		}
 	}
-	if !exist {
-		members = append(members, routeNamespace)
-	}
-	return members
+	return append(members, routeNamespace), true
 }
