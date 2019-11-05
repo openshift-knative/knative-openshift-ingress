@@ -103,18 +103,17 @@ func (r *ReconcileClusterIngress) Reconcile(request reconcile.Request) (reconcil
 
 	// Don't modify the informer's copy
 	ci := original.DeepCopy()
-	err = r.base.ReconcileIngress(ctx, ci)
+	reconcileErr := r.base.ReconcileIngress(ctx, ci)
 	if equality.Semantic.DeepEqual(original.Status, ci.Status) {
 		// If we didn't change anything then don't call updateStatus.
 		// This is important because the copy we loaded from the informer's
 		// cache may be stale and we don't want to overwrite a prior update
 		// to status with this stale state.
 	} else if _, err := r.updateStatus(ctx, ci); err != nil {
-		logger.Warnw("Failed to update clusterIngress status", err)
-		return reconcile.Result{}, err
+		logger.Errorf("Failed to update clusterIngress status %v", err)
 	}
 
-	return reconcile.Result{}, nil
+	return reconcile.Result{}, reconcileErr
 }
 
 // Update the Status of the ClusterIngress.  Caller is responsible for checking
