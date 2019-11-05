@@ -49,7 +49,9 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 
 		routes, err := resources.MakeRoutes(ci)
 		if err != nil {
-			return err
+			logger.Warnf("Failed to generate routes from ingress %v", err)
+			// Returning nil aborts the reconcilation. It will be retriggered once the status of the ingress changes.
+			return nil
 		}
 		for _, route := range routes {
 			logger.Infof("Creating/Updating OpenShift Route for host %s", route.Spec.Host)
