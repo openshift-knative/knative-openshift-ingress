@@ -5,12 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
+	maistrav1 "github.com/maistra/istio-operator/pkg/apis/maistra/v1"
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/common"
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/resources"
-
 	routev1 "github.com/openshift/api/route/v1"
+	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -27,11 +26,13 @@ import (
 )
 
 const (
-	name       = "ingress-operator"
-	namespace  = "istio-system"
-	uid        = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
-	domainName = name + "." + namespace + ".default.domainName"
-	routeName0 = "route-" + uid + "-0"
+	name                 = "ingress-operator"
+	serviceMeshNamespace = "knative-serving-ingress"
+	smmrName             = "default"
+	namespace            = "ingress-namespace"
+	uid                  = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
+	domainName           = name + "." + namespace + ".default.domainName"
+	routeName0           = "route-" + uid + "-0"
 )
 
 var (
@@ -56,7 +57,7 @@ var (
 		Status: networkingv1alpha1.IngressStatus{
 			LoadBalancer: &networkingv1alpha1.LoadBalancerStatus{
 				Ingress: []networkingv1alpha1.LoadBalancerIngressStatus{{
-					DomainInternal: "istio-ingressgateway.istio-system.svc.cluster.local",
+					DomainInternal: "istio-ingressgateway." + serviceMeshNamespace + ".svc.cluster.local",
 				}},
 			},
 		},
@@ -95,7 +96,7 @@ func TestRouteMigration(t *testing.T) {
 		want: []routev1.Route{{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:            routeName0,
-				Namespace:       "istio-system",
+				Namespace:       serviceMeshNamespace,
 				Labels:          map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
 				Annotations:     map[string]string{"haproxy.router.openshift.io/timeout": "5s"},
 				OwnerReferences: []metav1.OwnerReference{*kmeta.NewControllerRef(defaultIngress)},
@@ -126,14 +127,22 @@ func TestRouteMigration(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
+		// A ServiceMeshMemberRole resource with metadata
+		smmr := &maistrav1.ServiceMeshMemberRoll{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      smmrName,
+				Namespace: serviceMeshNamespace,
+			},
+		}
 		// Register operator types with the runtime scheme.
 		s := scheme.Scheme
+		s.AddKnownTypes(maistrav1.SchemeGroupVersion, smmr)
 		s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, defaultIngress)
 		s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.Route{})
 		s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
 
 		// Create a fake client to mock API calls.
-		cl := fake.NewFakeClient(defaultIngress, &routev1.RouteList{Items: test.state})
+		cl := fake.NewFakeClient(smmr, defaultIngress, &routev1.RouteList{Items: test.state})
 
 		// Create a Reconcile Ingress object with the scheme and fake client.
 		r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
@@ -148,6 +157,11 @@ func TestRouteMigration(t *testing.T) {
 		if _, err := r.Reconcile(req); err != nil {
 			t.Fatalf("reconcile: (%v)", err)
 		}
+		// Check if namespace has been added to smmr
+		if err := cl.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmr); err != nil {
+			t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
+		}
+		assert.Equal(t, []string{namespace}, smmr.Spec.Members)
 
 		routeList := &routev1.RouteList{}
 		err := cl.List(context.TODO(), &client.ListOptions{}, routeList)
@@ -210,13 +224,22 @@ func TestIngressController(t *testing.T) {
 			// route object
 			route := &routev1.Route{}
 
+			// A ServiceMeshMemberRole resource with metadata
+			smmr := &maistrav1.ServiceMeshMemberRoll{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      smmrName,
+					Namespace: serviceMeshNamespace,
+				},
+			}
+
 			// Register operator types with the runtime scheme.
 			s := scheme.Scheme
+			s.AddKnownTypes(maistrav1.SchemeGroupVersion, smmr)
 			s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, defaultIngress)
 			s.AddKnownTypes(routev1.SchemeGroupVersion, route)
 			s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
 			// Create a fake client to mock API calls.
-			cl := fake.NewFakeClient(defaultIngress, route)
+			cl := fake.NewFakeClient(smmr, defaultIngress, route)
 			// Create a Reconcile Ingress object with the scheme and fake client.
 			r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
 
@@ -232,9 +255,14 @@ func TestIngressController(t *testing.T) {
 				t.Fatalf("reconcile: (%v)", err)
 			}
 
+			// Check if namespace has been added to smmr
+			if err := cl.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmr); err != nil {
+				t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
+			}
+			assert.Equal(t, []string{namespace}, smmr.Spec.Members)
 			// Check if route has been created
 			routes := &routev1.Route{}
-			err := cl.Get(context.TODO(), types.NamespacedName{Name: routeName0, Namespace: namespace}, routes)
+			err := cl.Get(context.TODO(), types.NamespacedName{Name: routeName0, Namespace: serviceMeshNamespace}, routes)
 
 			assert.True(t, test.wantErr(err))
 			assert.Equal(t, test.want, routes.ObjectMeta.Annotations)

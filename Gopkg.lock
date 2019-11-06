@@ -149,8 +149,11 @@
   digest = "1:0b39706cfa32c1ba9e14435b5844d04aef81b60f44b6077e61e0607d56692603"
   name = "github.com/gogo/protobuf"
   packages = [
+    "gogoproto",
     "proto",
+    "protoc-gen-gogo/descriptor",
     "sortkeys",
+    "types",
   ]
   pruneopts = "NT"
   revision = "ba06b47c162d49f2af050fb4c75bcbc86a159d5c"
@@ -299,6 +302,14 @@
   ]
   pruneopts = "NT"
   revision = "6243d8e04c3f819e79757e8bc3faa15c3cb27003"
+
+[[projects]]
+  branch = "maistra-1.0"
+  digest = "1:c144e8c30c5c2d914487b3f43cd24401f73e0f9f5a30def2cf431f04400f3193"
+  name = "github.com/maistra/istio-operator"
+  packages = ["pkg/apis/maistra/v1"]
+  pruneopts = "NT"
+  revision = "ce63cfe69fb397f984d512bbd52ae65db37f0d15"
 
 [[projects]]
   digest = "1:56dbf15e091bf7926cb33a57cb6bdfc658fc6d3498d2f76f10a97ce7856f1fde"
@@ -654,6 +665,17 @@
   pruneopts = "NT"
   revision = "f221b8435cfb71e54062f6c6e99e9ade30b124d5"
   version = "v2.2.4"
+
+[[projects]]
+  branch = "release-1.1"
+  digest = "1:cfa241a87e0bc416528fdcb64b9562f76858766bb555717db4a83be741ee0e00"
+  name = "istio.io/api"
+  packages = [
+    "mesh/v1alpha1",
+    "networking/v1alpha3",
+  ]
+  pruneopts = "NT"
+  revision = "162827b552e84a48f0d9d45a8f10ea1623706663"
 
 [[projects]]
   digest = "1:6fa82ea248029bbbdddade20c06ab177ff6e485e5e45e48b045707415b7efd34"
@@ -1044,6 +1066,7 @@
     "pkg/recorder",
     "pkg/runtime/inject",
     "pkg/runtime/log",
+    "pkg/runtime/scheme",
     "pkg/runtime/signals",
     "pkg/source",
     "pkg/source/internal",
@@ -1084,6 +1107,7 @@
   analyzer-version = 1
   input-imports = [
     "github.com/google/go-cmp/cmp",
+    "github.com/maistra/istio-operator/pkg/apis/maistra/v1",
     "github.com/openshift/api/route/v1",
     "github.com/operator-framework/operator-sdk/pkg/k8sutil",
     "github.com/operator-framework/operator-sdk/pkg/leader",

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	maistrav1 "github.com/maistra/istio-operator/pkg/apis/maistra/v1"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/common"
@@ -27,13 +28,22 @@ func TestClusterIngressController(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
 	var (
-		name       = "clusteringress-operator"
-		namespace  = "istio-system"
-		uid        = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
-		domainName = name + "." + namespace + ".default.domainName"
-		routeName0 = "route-" + uid + "-0"
+		name                 = "clusteringress-operator"
+		serviceMeshNamespace = "knative-serving-ingress"
+		smmrName             = "default"
+		namespace            = "clusteringress-namespace"
+		uid                  = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
+		domainName           = name + "." + namespace + ".default.domainName"
+		routeName0           = "route-" + uid + "-0"
 	)
 
+	// A ServiceMeshMemberRole resource with metadata
+	smmr := &maistrav1.ServiceMeshMemberRoll{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      smmrName,
+			Namespace: serviceMeshNamespace,
+		},
+	}
 	// A ClusterIngress resource with metadata and spec.
 	clusteringress := &networkingv1alpha1.ClusterIngress{
 		ObjectMeta: metav1.ObjectMeta{
@@ -55,7 +65,7 @@ func TestClusterIngressController(t *testing.T) {
 		Status: networkingv1alpha1.IngressStatus{
 			LoadBalancer: &networkingv1alpha1.LoadBalancerStatus{
 				Ingress: []networkingv1alpha1.LoadBalancerIngressStatus{{
-					DomainInternal: "istio-ingressgateway.istio-system.svc.cluster.local",
+					DomainInternal: "istio-ingressgateway." + serviceMeshNamespace + ".svc.cluster.local",
 				}},
 			},
 		},
@@ -66,12 +76,14 @@ func TestClusterIngressController(t *testing.T) {
 
 	// Objects to track in the fake client.
 	objs := []runtime.Object{
+		smmr,
 		clusteringress,
 		route,
 	}
 
 	// Register operator types with the runtime scheme.
 	s := scheme.Scheme
+	s.AddKnownTypes(maistrav1.SchemeGroupVersion, smmr)
 	s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, clusteringress)
 	s.AddKnownTypes(routev1.SchemeGroupVersion, route)
 	s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
@@ -85,19 +97,22 @@ func TestClusterIngressController(t *testing.T) {
 	req := reconcile.Request{
 		NamespacedName: types.NamespacedName{
 			Name:      name,
-			Namespace: "istio-system",
+			Namespace: namespace,
 		},
 	}
-	_, err := r.Reconcile(req)
-	if err != nil {
+	if _, err := r.Reconcile(req); err != nil {
 		t.Fatalf("reconcile: (%v)", err)
 	}
 
+	// Check if namespace has been added to smmr
+	if err := cl.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmr); err != nil {
+		t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
+	}
+	assert.Equal(t, []string{namespace}, smmr.Spec.Members)
 	// Check if route has been created
 	routes := &routev1.Route{}
 
-	err = cl.Get(context.TODO(), types.NamespacedName{Name: routeName0, Namespace: "istio-system"}, routes)
-	if err != nil {
+	if err := cl.Get(context.TODO(), types.NamespacedName{Name: routeName0, Namespace: serviceMeshNamespace}, routes); err != nil {
 		t.Fatalf("get route: (%v)", err)
 	}
 

@@ -3,7 +3,9 @@ package common
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	maistrav1 "github.com/maistra/istio-operator/pkg/apis/maistra/v1"
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/resources"
 	routev1 "github.com/openshift/api/route/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -47,6 +49,27 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		}
 		existingMap := routeMap(existing, selector)
 
+		// update ServiceMeshMemberRole with the namespace info where knative routes created
+		smmr := &maistrav1.ServiceMeshMemberRoll{}
+		// Namespace knative-serving-ingress hardcoded for now.
+		// The whole component knative-openshift-ingress is going to be moved into
+		// knative-serving-networking-openshift anyway, where it will be possible to statically determine the namespace to use.
+		if err := r.Client.Get(ctx, types.NamespacedName{Name: "default", Namespace: "knative-serving-ingress"}, smmr); err != nil {
+			return err
+		}
+		newMembers, changed := appendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
+		smmr.Spec.Members = newMembers
+
+		if changed {
+			if err := r.Client.Update(ctx, smmr); err != nil {
+				// ref for substring https://github.com/Maistra/istio-operator/blob/maistra-1.0/pkg/controller/servicemesh/validation/memberroll.go#L95
+				if strings.Contains(err.Error(), "one or more members are already defined in another ServiceMeshMemberRoll") {
+					logger.Errorf("failed to update ServiceMeshMemberRole because namespace %s is already a member of another ServiceMeshMemberRoll", ci.GetNamespace())
+					return nil
+				}
+				return err
+			}
+		}
 		routes, err := resources.MakeRoutes(ci)
 		if err != nil {
 			logger.Warnf("Failed to generate routes from ingress %v", err)
@@ -166,4 +189,14 @@ func (r *BaseIngressReconciler) reconcileDeletion(ctx context.Context, ci networ
 	// cluster-scoped ClusterIngress to a namespace-scoped K8s
 	// Service.
 	return nil
+}
+
+// appendIfAbsent append namespace to member if its not exist
+func appendIfAbsent(members []string, routeNamespace string) ([]string, bool) {
+	for _, val := range members {
+		if val == routeNamespace {
+			return members, false
+		}
+	}
+	return append(members, routeNamespace), true
 }
