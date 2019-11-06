@@ -19,6 +19,7 @@ import (
 	"knative.dev/serving/pkg/apis/networking"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"knative.dev/serving/pkg/apis/serving"
+	"knative.dev/serving/pkg/network"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -38,10 +39,11 @@ const (
 var (
 	defaultIngress = &networkingv1alpha1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			UID:       uid,
-			Labels:    map[string]string{serving.RouteNamespaceLabelKey: namespace, serving.RouteLabelKey: name},
+			Name:        name,
+			Namespace:   namespace,
+			UID:         uid,
+			Labels:      map[string]string{serving.RouteNamespaceLabelKey: namespace, serving.RouteLabelKey: name},
+			Annotations: map[string]string{networking.IngressClassAnnotationKey: network.IstioIngressClassName},
 		},
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
@@ -98,7 +100,7 @@ func TestRouteMigration(t *testing.T) {
 				Name:            routeName0,
 				Namespace:       serviceMeshNamespace,
 				Labels:          map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
-				Annotations:     map[string]string{"haproxy.router.openshift.io/timeout": "5s"},
+				Annotations:     map[string]string{resources.TimeoutAnnotation: "5s", networking.IngressClassAnnotationKey: network.IstioIngressClassName},
 				OwnerReferences: []metav1.OwnerReference{*kmeta.NewControllerRef(defaultIngress)},
 			},
 			Spec: routev1.RouteSpec{
@@ -127,6 +129,8 @@ func TestRouteMigration(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
+		ingress := defaultIngress.DeepCopy()
+
 		// A ServiceMeshMemberRole resource with metadata
 		smmr := &maistrav1.ServiceMeshMemberRoll{
 			ObjectMeta: metav1.ObjectMeta{
@@ -137,12 +141,12 @@ func TestRouteMigration(t *testing.T) {
 		// Register operator types with the runtime scheme.
 		s := scheme.Scheme
 		s.AddKnownTypes(maistrav1.SchemeGroupVersion, smmr)
-		s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, defaultIngress)
+		s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, ingress)
 		s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.Route{})
 		s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
 
 		// Create a fake client to mock API calls.
-		cl := fake.NewFakeClient(smmr, defaultIngress, &routev1.RouteList{Items: test.state})
+		cl := fake.NewFakeClient(smmr, ingress, &routev1.RouteList{Items: test.state})
 
 		// Create a Reconcile Ingress object with the scheme and fake client.
 		r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
@@ -186,13 +190,13 @@ func TestIngressController(t *testing.T) {
 		{
 			name:        "reconcile route with timeout annotation",
 			annotations: map[string]string{},
-			want:        map[string]string{resources.TimeoutAnnotation: "5s"},
+			want:        map[string]string{resources.TimeoutAnnotation: "5s", networking.IngressClassAnnotationKey: network.IstioIngressClassName},
 			wantErr:     func(err error) bool { return err == nil },
 		},
 		{
 			name:        "reconcile route with taking over annotations",
 			annotations: map[string]string{serving.CreatorAnnotation: "userA", serving.UpdaterAnnotation: "userB"},
-			want:        map[string]string{serving.CreatorAnnotation: "userA", serving.UpdaterAnnotation: "userB", resources.TimeoutAnnotation: "5s"},
+			want:        map[string]string{serving.CreatorAnnotation: "userA", serving.UpdaterAnnotation: "userB", resources.TimeoutAnnotation: "5s", networking.IngressClassAnnotationKey: network.IstioIngressClassName},
 			wantErr:     func(err error) bool { return err == nil },
 		},
 		{
@@ -204,7 +208,7 @@ func TestIngressController(t *testing.T) {
 		{
 			name:        "reconcile route with passthrough annotation",
 			annotations: map[string]string{resources.TLSTerminationAnnotation: "passthrough"},
-			want:        map[string]string{resources.TLSTerminationAnnotation: "passthrough", resources.TimeoutAnnotation: "5s"},
+			want:        map[string]string{resources.TLSTerminationAnnotation: "passthrough", resources.TimeoutAnnotation: "5s", networking.IngressClassAnnotationKey: network.IstioIngressClassName},
 			wantErr:     func(err error) bool { return err == nil },
 		},
 		{
@@ -213,13 +217,24 @@ func TestIngressController(t *testing.T) {
 			want:        nil,
 			wantErr:     errors.IsNotFound,
 		},
+		{
+			name:        "reconcile route with different ingress annotation",
+			annotations: map[string]string{networking.IngressClassAnnotationKey: "kourier"},
+			want:        map[string]string{networking.IngressClassAnnotationKey: "kourier", resources.TimeoutAnnotation: "5s"},
+			wantErr:     func(err error) bool { return err == nil },
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ingress := defaultIngress.DeepCopy()
 
-			// Set test annotation
-			defaultIngress.SetAnnotations(test.annotations)
+			// Set test annotations
+			annotations := ingress.GetAnnotations()
+			for k, v := range test.annotations {
+				annotations[k] = v
+			}
+			ingress.SetAnnotations(annotations)
 
 			// route object
 			route := &routev1.Route{}
@@ -235,11 +250,11 @@ func TestIngressController(t *testing.T) {
 			// Register operator types with the runtime scheme.
 			s := scheme.Scheme
 			s.AddKnownTypes(maistrav1.SchemeGroupVersion, smmr)
-			s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, defaultIngress)
+			s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, ingress)
 			s.AddKnownTypes(routev1.SchemeGroupVersion, route)
 			s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
 			// Create a fake client to mock API calls.
-			cl := fake.NewFakeClient(smmr, defaultIngress, route)
+			cl := fake.NewFakeClient(smmr, ingress, route)
 			// Create a Reconcile Ingress object with the scheme and fake client.
 			r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
 
@@ -259,7 +274,11 @@ func TestIngressController(t *testing.T) {
 			if err := cl.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmr); err != nil {
 				t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
 			}
-			assert.Equal(t, []string{namespace}, smmr.Spec.Members)
+			if ingress.GetAnnotations()[networking.IngressClassAnnotationKey] == network.IstioIngressClassName {
+				assert.Equal(t, []string{namespace}, smmr.Spec.Members)
+			} else {
+				assert.Equal(t, 0, len(smmr.Spec.Members))
+			}
 			// Check if route has been created
 			routes := &routev1.Route{}
 			err := cl.Get(context.TODO(), types.NamespacedName{Name: routeName0, Namespace: serviceMeshNamespace}, routes)
