@@ -16,6 +16,7 @@ import (
 	"knative.dev/serving/pkg/apis/networking"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"knative.dev/serving/pkg/apis/serving"
+	"knative.dev/serving/pkg/network"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -49,27 +50,13 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		}
 		existingMap := routeMap(existing, selector)
 
-		// update ServiceMeshMemberRole with the namespace info where knative routes created
-		smmr := &maistrav1.ServiceMeshMemberRoll{}
-		// Namespace knative-serving-ingress hardcoded for now.
-		// The whole component knative-openshift-ingress is going to be moved into
-		// knative-serving-networking-openshift anyway, where it will be possible to statically determine the namespace to use.
-		if err := r.Client.Get(ctx, types.NamespacedName{Name: "default", Namespace: "knative-serving-ingress"}, smmr); err != nil {
-			return err
-		}
-		newMembers, changed := appendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
-		smmr.Spec.Members = newMembers
-
-		if changed {
-			if err := r.Client.Update(ctx, smmr); err != nil {
-				// ref for substring https://github.com/Maistra/istio-operator/blob/maistra-1.0/pkg/controller/servicemesh/validation/memberroll.go#L95
-				if strings.Contains(err.Error(), "one or more members are already defined in another ServiceMeshMemberRoll") {
-					logger.Errorf("failed to update ServiceMeshMemberRole because namespace %s is already a member of another ServiceMeshMemberRoll", ci.GetNamespace())
-					return nil
-				}
+		// Only add Istio ingress to SMMR
+		if ci.GetAnnotations()[networking.IngressClassAnnotationKey] == network.IstioIngressClassName {
+			if err := r.reconcileSmmr(ctx, ci); err != nil {
 				return err
 			}
 		}
+
 		routes, err := resources.MakeRoutes(ci)
 		if err != nil {
 			logger.Warnf("Failed to generate routes from ingress %v", err)
@@ -97,6 +84,33 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 	}
 
 	logger.Info("ClusterIngress successfully synced")
+	return nil
+}
+
+func (r *BaseIngressReconciler) reconcileSmmr(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
+	logger := logging.FromContext(ctx)
+
+	// update ServiceMeshMemberRole with the namespace info where knative routes created
+	smmr := &maistrav1.ServiceMeshMemberRoll{}
+	// Namespace knative-serving-ingress hardcoded for now.
+	// The whole component knative-openshift-ingress is going to be moved into
+	// knative-serving-networking-openshift anyway, where it will be possible to statically determine the namespace to use.
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: "default", Namespace: "knative-serving-ingress"}, smmr); err != nil {
+		return err
+	}
+	newMembers, changed := appendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
+	smmr.Spec.Members = newMembers
+
+	if changed {
+		if err := r.Client.Update(ctx, smmr); err != nil {
+			// ref for substring https://github.com/Maistra/istio-operator/blob/maistra-1.0/pkg/controller/servicemesh/validation/memberroll.go#L95
+			if strings.Contains(err.Error(), "one or more members are already defined in another ServiceMeshMemberRoll") {
+				logger.Errorf("failed to update ServiceMeshMemberRole because namespace %s is already a member of another ServiceMeshMemberRoll", ci.GetNamespace())
+				return nil
+			}
+			return err
+		}
+	}
 	return nil
 }
 
