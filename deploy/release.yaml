@@ -69,6 +69,12 @@ rules:
   - knativeservings/finalizers
   verbs:
   - '*'
+- apiGroups:
+    - maistra.io
+  resources:
+    - servicemeshmemberrolls
+  verbs:
+    - '*'
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
