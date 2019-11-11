@@ -24,8 +24,8 @@ const (
 	lbNamespace = "lb-namespace"
 
 	uid        = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
-	routeName0 = "route-" + uid + "-0"
-	routeName1 = "route-" + uid + "-1"
+	routeName0 = "route-" + uid + "-323531366235"
+	routeName1 = "route-" + uid + "-663738313063"
 )
 
 var ownerRef = *kmeta.NewControllerRef(ingress())
