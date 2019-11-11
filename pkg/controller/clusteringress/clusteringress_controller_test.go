@@ -36,7 +36,7 @@ func TestClusterIngressController(t *testing.T) {
 		namespace            = "clusteringress-namespace"
 		uid                  = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
 		domainName           = name + "." + namespace + ".default.domainName"
-		routeName0           = "route-" + uid + "-0"
+		routeName0           = "route-" + uid + "-303036363463"
 	)
 
 	// A ServiceMeshMemberRole resource with metadata
