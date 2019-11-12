@@ -103,9 +103,11 @@ func (r *ReconcileClusterIngress) Reconcile(request reconcile.Request) (reconcil
 
 	// Don't modify the informer's copy
 	ci := original.DeepCopy()
-	if len(ci.GetFinalizers()) == 0 {
-		ci.SetFinalizers([]string{"ingress"})
-		return reconcile.Result{}, r.client.Update(context.TODO(), ci)
+	if newFinalizer, change := r.base.AppendIfAbsent(ci.Finalizers, "ocp-ingress"); change {
+		ci.Finalizers = newFinalizer
+		if err := r.client.Update(context.TODO(), ci); err != nil {
+			return reconcile.Result{}, nil
+		}
 	}
 	reconcileErr := r.base.ReconcileIngress(ctx, ci)
 	if equality.Semantic.DeepEqual(original.Status, ci.Status) {

@@ -243,6 +243,39 @@ func TestRouteMigration(t *testing.T) {
 
 		routes := routeList.Items
 		assert.ElementsMatch(t, routes, test.want)
+
+		// A ServiceMeshMemberRole resource with metadata
+		smmrDelete := &maistrav1.ServiceMeshMemberRoll{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      smmrName,
+				Namespace: serviceMeshNamespace,
+			},
+		}
+		delIngress := deleteIngress.DeepCopy()
+		s = scheme.Scheme
+		s.AddKnownTypes(maistrav1.SchemeGroupVersion, smmrDelete)
+		s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, &networkingv1alpha1.IngressList{})
+		// Create a fake client to mock API calls.
+		clNew := fake.NewFakeClient(smmrDelete, delIngress)
+
+		// Create a Reconcile Ingress object with the scheme and fake client.
+		r = &ReconcileIngress{base: &common.BaseIngressReconciler{Client: clNew}, client: clNew, scheme: s}
+		// Mock request to simulate Reconcile() being called on an event for a
+		// watched resource .
+		req = reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      name,
+				Namespace: namespace,
+			},
+		}
+		if _, err := r.Reconcile(req); err != nil {
+			t.Fatalf("reconcile: (%v)", err)
+		}
+		if err := clNew.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmrDelete); err != nil {
+			t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
+		}
+		// Check if namespace has been removed from smmr
+		assert.Equal(t, len([]string{}), len(smmrDelete.Spec.Members))
 	})
 }
 
@@ -323,6 +356,7 @@ func TestIngressController(t *testing.T) {
 			s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, ingress)
 			s.AddKnownTypes(routev1.SchemeGroupVersion, route)
 			s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
+			s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, &networkingv1alpha1.IngressList{})
 			// Create a fake client to mock API calls.
 			cl := fake.NewFakeClient(smmr, ingress, route)
 			// Create a Reconcile Ingress object with the scheme and fake client.
