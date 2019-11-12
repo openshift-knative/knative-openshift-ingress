@@ -356,7 +356,6 @@ func TestIngressController(t *testing.T) {
 			s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, ingress)
 			s.AddKnownTypes(routev1.SchemeGroupVersion, route)
 			s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
-			s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, &networkingv1alpha1.IngressList{})
 			// Create a fake client to mock API calls.
 			cl := fake.NewFakeClient(smmr, ingress, route)
 			// Create a Reconcile Ingress object with the scheme and fake client.
