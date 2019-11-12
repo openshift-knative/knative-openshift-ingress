@@ -44,6 +44,7 @@ var (
 			UID:         uid,
 			Labels:      map[string]string{serving.RouteNamespaceLabelKey: namespace, serving.RouteLabelKey: name},
 			Annotations: map[string]string{networking.IngressClassAnnotationKey: network.IstioIngressClassName},
+			Finalizers:  []string{"ingresses"},
 		},
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,

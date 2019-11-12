@@ -104,9 +104,12 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
-
 	// Don't modify the informer's copy
 	ci := original.DeepCopy()
+	if len(ci.GetFinalizers()) == 0 {
+		ci.SetFinalizers([]string{"ingress"})
+		return reconcile.Result{}, r.client.Update(context.TODO(), ci)
+	}
 	reconcileErr := r.base.ReconcileIngress(ctx, ci)
 	if equality.Semantic.DeepEqual(original.Status, ci.Status) {
 		// If we didn't change anything then don't call updateStatus.

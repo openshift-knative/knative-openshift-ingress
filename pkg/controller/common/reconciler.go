@@ -24,6 +24,11 @@ type BaseIngressReconciler struct {
 	Client client.Client
 }
 
+const (
+	smmrName      = "default"
+	smmrNamespace = "knative-serving-ingress"
+)
+
 func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
 	logger := logging.FromContext(ctx)
 
@@ -94,7 +99,7 @@ func (r *BaseIngressReconciler) reconcileSmmr(ctx context.Context, ci networking
 	// Namespace knative-serving-ingress hardcoded for now.
 	// The whole component knative-openshift-ingress is going to be moved into
 	// knative-serving-networking-openshift anyway, where it will be possible to statically determine the namespace to use.
-	if err := r.Client.Get(ctx, types.NamespacedName{Name: "default", Namespace: "knative-serving-ingress"}, smmr); err != nil {
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: smmrName, Namespace: smmrNamespace}, smmr); err != nil {
 		return err
 	}
 	newMembers, changed := appendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
@@ -197,11 +202,33 @@ func (r *BaseIngressReconciler) reconcileRoute(ctx context.Context, ci networkin
 }
 
 func (r *BaseIngressReconciler) reconcileDeletion(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
-	// TODO: something with a finalizer?  We're using owner refs for
-	// now, but really shouldn't be using owner refs from
-	// cluster-scoped ClusterIngress to a namespace-scoped K8s
-	// Service.
-	return nil
+	smmr := &maistrav1.ServiceMeshMemberRoll{}
+	// get list of ingress object for a namespace
+	ingressList := networkingv1alpha1.IngressList{}
+	if err := r.Client.List(ctx, &client.ListOptions{
+		Namespace: ci.GetNamespace(),
+	}, &ingressList); err != nil {
+		return err
+	}
+	// If particular namespace has only one ingress object then after deletion namespace will have empty ingress object
+	// So remove namespace from SMMR
+	if len(ingressList.Items) == 1 {
+		if err := r.Client.Get(ctx, types.NamespacedName{Name: smmrName, Namespace: smmrNamespace}, smmr); err != nil {
+			return err
+		}
+		for i, val := range smmr.Spec.Members {
+			if val == ci.GetNamespace() {
+				smmr.Spec.Members = append(smmr.Spec.Members[:i], smmr.Spec.Members[i+1:]...)
+				break
+			}
+		}
+		if err := r.Client.Update(ctx, smmr); err != nil {
+			return err
+		}
+	}
+	// remove finalyzer in order to remove the ingress object
+	ci.SetFinalizers(ci.GetFinalizers()[1:])
+	return r.Client.Update(ctx, ci)
 }
 
 // appendIfAbsent append namespace to member if its not exist
