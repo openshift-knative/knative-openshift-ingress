@@ -33,6 +33,12 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 
 	logger.Infof("Reconciling ingress :%v", ci)
 
+	// Only add Istio ingress to SMMR
+	if ci.GetAnnotations()[networking.IngressClassAnnotationKey] == network.IstioIngressClassName {
+		if err := r.reconcileSmmr(ctx, ci); err != nil {
+			return err
+		}
+	}
 	exposed := ci.GetSpec().Visibility == networkingv1alpha1.IngressVisibilityExternalIP
 	if exposed {
 		ingressLabels := ci.GetLabels()
@@ -49,13 +55,6 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 			return err
 		}
 		existingMap := routeMap(existing, selector)
-
-		// Only add Istio ingress to SMMR
-		if ci.GetAnnotations()[networking.IngressClassAnnotationKey] == network.IstioIngressClassName {
-			if err := r.reconcileSmmr(ctx, ci); err != nil {
-				return err
-			}
-		}
 
 		routes, err := resources.MakeRoutes(ci)
 		if err != nil {

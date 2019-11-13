@@ -64,7 +64,76 @@ var (
 			},
 		},
 	}
+
+	defaultIngressForClusterLocal = &networkingv1alpha1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Namespace:   namespace,
+			UID:         uid,
+			Labels:      map[string]string{serving.RouteNamespaceLabelKey: namespace, serving.RouteLabelKey: name},
+			Annotations: map[string]string{networking.IngressClassAnnotationKey: network.IstioIngressClassName},
+		},
+		Spec: networkingv1alpha1.IngressSpec{
+			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
+			Rules: []networkingv1alpha1.IngressRule{{
+				Hosts: []string{"test.default.svc.cluster.local"},
+				HTTP: &networkingv1alpha1.HTTPIngressRuleValue{
+					Paths: []networkingv1alpha1.HTTPIngressPath{{
+						Timeout: &metav1.Duration{Duration: 5 * time.Second},
+					}},
+				},
+			}},
+		},
+		Status: networkingv1alpha1.IngressStatus{
+			LoadBalancer: &networkingv1alpha1.LoadBalancerStatus{
+				Ingress: []networkingv1alpha1.LoadBalancerIngressStatus{{
+					DomainInternal: "cluster-local-gateway." + serviceMeshNamespace + ".svc.cluster.local",
+				}},
+			},
+		},
+	}
 )
+
+func TestClusterLocalSvc(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+	ingress := defaultIngressForClusterLocal.DeepCopy()
+
+	// A ServiceMeshMemberRole resource with metadata
+	smmr := &maistrav1.ServiceMeshMemberRoll{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      smmrName,
+			Namespace: serviceMeshNamespace,
+		},
+	}
+	// Register operator types with the runtime scheme.
+	s := scheme.Scheme
+	s.AddKnownTypes(maistrav1.SchemeGroupVersion, smmr)
+	s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, ingress)
+	s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.Route{})
+	s.AddKnownTypes(routev1.SchemeGroupVersion, &routev1.RouteList{})
+
+	// Create a fake client to mock API calls.
+	cl := fake.NewFakeClient(smmr, ingress)
+
+	// Create a Reconcile Ingress object with the scheme and fake client.
+	r := &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
+	// Mock request to simulate Reconcile() being called on an event for a
+	// watched resource .
+	req := reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      name,
+			Namespace: namespace,
+		},
+	}
+	if _, err := r.Reconcile(req); err != nil {
+		t.Fatalf("reconcile: (%v)", err)
+	}
+	// Check if namespace has been added to smmr
+	if err := cl.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmr); err != nil {
+		t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
+	}
+	assert.Equal(t, []string{namespace}, smmr.Spec.Members)
+}
 
 func TestRouteMigration(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
