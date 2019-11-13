@@ -8,6 +8,7 @@ import (
 	maistrav1 "github.com/maistra/istio-operator/pkg/apis/maistra/v1"
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/resources"
 	routev1 "github.com/openshift/api/route/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -87,8 +88,110 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 	return nil
 }
 
+func (r *BaseIngressReconciler) reconcileNetworkPolicy(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
+	desired := resources.MakeNetworkPolicyAllowAll(ci)
+
+	var networkPolicyList networkingv1.NetworkPolicyList
+	if err := r.Client.List(ctx, &client.ListOptions{}, &networkPolicyList); err != nil {
+		return err
+	}
+
+	// Detect if the user has any NetworkPolicy objects in this namespace
+	foundUserNetworkPolicy := false
+	for _, networkPolicy := range networkPolicyList.Items {
+		// Don't treat the NetworkPolicy we create as user-created
+		if networkPolicy.Name == desired.Name && networkPolicy.Namespace == desired.Namespace {
+			continue
+		}
+
+		// Don't treat the NetworkPolicy owned by Service Mesh as user-created
+		if networkPolicy.Labels["maistra.io/owner"] != "" {
+			continue
+		}
+
+		// Treat any other NetworkPolicy we find as user-created
+		foundUserNetworkPolicy = true
+	}
+
+	// If the user has created NetworkPolicy objects in this namespace
+	// then assume they are managing NetworkPolicy and do not create
+	// our own. If we previously created one and a user starts
+	// managing NetworkPolicy explicitly then this will allow them to
+	// delete ours without us automatically recreating it again.
+	if foundUserNetworkPolicy {
+		return nil
+	}
+
+	if err := r.ensureNetworkPolicy(ctx, ci, desired); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *BaseIngressReconciler) ensureNetworkPolicy(ctx context.Context, ci networkingv1alpha1.IngressAccessor, desired *networkingv1.NetworkPolicy) error {
+	logger := logging.FromContext(ctx)
+
+	networkPolicy := &networkingv1.NetworkPolicy{}
+	err := r.Client.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, networkPolicy)
+
+	if err != nil && errors.IsNotFound(err) {
+		err = r.Client.Create(ctx, desired)
+		if err != nil {
+			logger.Errorf("Failed to create NetworkPolicy %q in namespace %q: %v", desired.Name, desired.Namespace, err)
+			return err
+		}
+		logger.Infof("Created NetworkPolicy %q in namespace %q", desired.Name, desired.Namespace)
+	} else if err != nil {
+		return err
+	} else if !equality.Semantic.DeepEqual(networkPolicy.Spec, desired.Spec) {
+		// Don't modify the informers copy
+		existing := networkPolicy.DeepCopy()
+		existing.Spec = desired.Spec
+		err = r.Client.Update(ctx, existing)
+		if err != nil {
+			logger.Errorf("Failed to update NetworkPolicy %q in namespace %q: %v", desired.Name, desired.Namespace, err)
+			return err
+		}
+	}
+	return nil
+}
+
+// TODO: This is just stubbed in because I don't know when to call
+// it. We should delete this NetworkPolicy when deleting this
+// namespace out of the SMMR, I think?
+//
+// Or, should we never delete it? Because once we create it, the user
+// may accidentally depend on its allow-all behavior in this
+// namespace.
+func (r *BaseIngressReconciler) deleteNetworkPolicy(ctx context.Context, ci networkingv1alpha1.IngressAccessor, desired *networkingv1.NetworkPolicy) error {
+	logger := logging.FromContext(ctx)
+
+	networkPolicy := &networkingv1.NetworkPolicy{}
+	err := r.Client.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, networkPolicy)
+
+	if err != nil && errors.IsNotFound(err) {
+		// Doesn't exist, so no need to try to delete it
+		return nil
+	} else if err != nil {
+		return err
+	} else {
+		logger.Infof("Deleting NetworkPolicy %q in namespace %q", desired.Name, desired.Namespace)
+		if err := r.Client.Delete(ctx, desired); err != nil {
+			logger.Errorf("Failed to delete NetworkPolicy %q in namespace %q: %v", desired.Name, desired.Namespace, err)
+			return err
+		}
+		logger.Infof("Deleted NetworkPolicy %q in namespace %q", desired.Name, desired.Namespace)
+	}
+	return nil
+}
+
 func (r *BaseIngressReconciler) reconcileSmmr(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
 	logger := logging.FromContext(ctx)
+
+	if err := r.reconcileNetworkPolicy(ctx, ci); err != nil {
+		return err
+	}
 
 	// update ServiceMeshMemberRole with the namespace info where knative routes created
 	smmr := &maistrav1.ServiceMeshMemberRoll{}
