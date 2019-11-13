@@ -102,7 +102,7 @@ func (r *BaseIngressReconciler) reconcileSmmr(ctx context.Context, ci networking
 	if err := r.Client.Get(ctx, types.NamespacedName{Name: smmrName, Namespace: smmrNamespace}, smmr); err != nil {
 		return err
 	}
-	newMembers, changed := r.AppendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
+	newMembers, changed := AppendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
 	smmr.Spec.Members = newMembers
 
 	if changed {
@@ -202,6 +202,7 @@ func (r *BaseIngressReconciler) reconcileRoute(ctx context.Context, ci networkin
 }
 
 func (r *BaseIngressReconciler) reconcileDeletion(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
+	logger := logging.FromContext(ctx)
 	// get list of ingress object for a namespace
 	ingressList := networkingv1alpha1.IngressList{}
 	if err := r.Client.List(ctx, &client.ListOptions{
@@ -212,9 +213,8 @@ func (r *BaseIngressReconciler) reconcileDeletion(ctx context.Context, ci networ
 	// If particular namespace has only one ingress object then after deletion namespace will have empty ingress object
 	// So remove namespace from SMMR
 	if len(ingressList.Items) == 1 {
-		for i := range ingressList.Items {
 			// In order to double check that we are reconciling proper ingress check with name and namespace
-			if ci.GetNamespace() == ingressList.Items[i].Namespace && ci.GetName() == ingressList.Items[i].Name {
+			if ci.GetNamespace() == ingressList.Items[0].Namespace && ci.GetName() == ingressList.Items[0].Name {
 				smmr := &maistrav1.ServiceMeshMemberRoll{}
 				if err := r.Client.Get(ctx, types.NamespacedName{Name: smmrName, Namespace: smmrNamespace}, smmr); err != nil {
 					return err
@@ -229,20 +229,17 @@ func (r *BaseIngressReconciler) reconcileDeletion(ctx context.Context, ci networ
 					return err
 				}
 			}
-		}
 	}
-	for i := range ci.GetFinalizers() {
-		// remove finalyzer which was added by knative-openshift-ingress
-		if ci.GetFinalizers()[i] == "ocp-ingress" {
-			ci.SetFinalizers(ci.GetFinalizers()[i+1:])
-			break
-		}
+	if len(ci.GetFinalizers()) == 0 || ci.GetFinalizers()[0] != "ocp-ingress" {
+		return nil
 	}
+	logger.Info("Removing Finalizer")
+	ci.SetFinalizers(ci.GetFinalizers()[1:])
 	return r.Client.Update(ctx, ci)
 }
 
 // AppendIfAbsent append namespace to member if its not exist
-func (r *BaseIngressReconciler) AppendIfAbsent(members []string, routeNamespace string) ([]string, bool) {
+func AppendIfAbsent(members []string, routeNamespace string) ([]string, bool) {
 	for _, val := range members {
 		if val == routeNamespace {
 			return members, false

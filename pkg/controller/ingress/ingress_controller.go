@@ -106,7 +106,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 	// Don't modify the informer's copy
 	ci := original.DeepCopy()
-	if newFinalizer, change := r.base.AppendIfAbsent(ci.Finalizers, "ocp-ingress"); change {
+	if newFinalizer, change := common.AppendIfAbsent(ci.Finalizers, "ocp-ingress"); change {
 		ci.Finalizers = newFinalizer
 		if err := r.client.Update(context.TODO(), ci); err != nil {
 			return reconcile.Result{}, nil
