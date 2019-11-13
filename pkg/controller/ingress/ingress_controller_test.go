@@ -93,6 +93,35 @@ var (
 			},
 		},
 	}
+
+	deleteIngress = &networkingv1alpha1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              name,
+			Namespace:         namespace,
+			UID:               uid,
+			Labels:            map[string]string{serving.RouteNamespaceLabelKey: namespace, serving.RouteLabelKey: name},
+			Annotations:       map[string]string{networking.IngressClassAnnotationKey: network.IstioIngressClassName},
+			DeletionTimestamp: &metav1.Time{Time: time.Now()},
+		},
+		Spec: networkingv1alpha1.IngressSpec{
+			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
+			Rules: []networkingv1alpha1.IngressRule{{
+				Hosts: []string{domainName},
+				HTTP: &networkingv1alpha1.HTTPIngressRuleValue{
+					Paths: []networkingv1alpha1.HTTPIngressPath{{
+						Timeout: &metav1.Duration{Duration: 5 * time.Second},
+					}},
+				},
+			}},
+		},
+		Status: networkingv1alpha1.IngressStatus{
+			LoadBalancer: &networkingv1alpha1.LoadBalancerStatus{
+				Ingress: []networkingv1alpha1.LoadBalancerIngressStatus{{
+					DomainInternal: "istio-ingressgateway." + serviceMeshNamespace + ".svc.cluster.local",
+				}},
+			},
+		},
+	}
 )
 
 func TestClusterLocalSvc(t *testing.T) {

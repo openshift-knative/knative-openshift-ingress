@@ -35,9 +35,6 @@ const (
 func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
 	logger := logging.FromContext(ctx)
 
-	if len(ci.GetFinalizers()) == 0 || ci.GetFinalizers()[0] != "ocp-ingress" {
-		return nil
-	}
 	if ci.GetDeletionTimestamp() != nil {
 		return r.reconcileDeletion(ctx, ci)
 	}
@@ -206,6 +203,10 @@ func (r *BaseIngressReconciler) reconcileRoute(ctx context.Context, ci networkin
 
 func (r *BaseIngressReconciler) reconcileDeletion(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
 	logger := logging.FromContext(ctx)
+
+	if len(ci.GetFinalizers()) == 0 || ci.GetFinalizers()[0] != "ocp-ingress" {
+		return nil
+	}
 	// get list of ingress object for a namespace
 	ingressList := networkingv1alpha1.IngressList{}
 	if err := r.Client.List(ctx, &client.ListOptions{
