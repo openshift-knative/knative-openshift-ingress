@@ -3,7 +3,6 @@ package resources
 import (
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 )
 
 const (
@@ -12,11 +11,11 @@ const (
 
 // MakeNetworkPolicyAllowAll creates a Kubernetes NetworkPolicy
 // allowing all traffic into the namespace of a Knative Ingress
-func MakeNetworkPolicyAllowAll(ci networkingv1alpha1.IngressAccessor) *networkingv1.NetworkPolicy {
+func MakeNetworkPolicyAllowAll(ns string) *networkingv1.NetworkPolicy {
 	networkPolicy := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      NetworkPolicyAllowAllName,
-			Namespace: ci.GetNamespace(),
+			Namespace: ns,
 		},
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{},

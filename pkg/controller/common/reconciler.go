@@ -89,18 +89,17 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 }
 
 func (r *BaseIngressReconciler) reconcileNetworkPolicy(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
-	desired := resources.MakeNetworkPolicyAllowAll(ci)
+	desired := resources.MakeNetworkPolicyAllowAll(ci.GetNamespace())
 
 	var networkPolicyList networkingv1.NetworkPolicyList
-	if err := r.Client.List(ctx, &client.ListOptions{}, &networkPolicyList); err != nil {
+	if err := r.Client.List(ctx, &client.ListOptions{Namespace: ci.GetNamespace()}, &networkPolicyList); err != nil {
 		return err
 	}
 
 	// Detect if the user has any NetworkPolicy objects in this namespace
-	foundUserNetworkPolicy := false
 	for _, networkPolicy := range networkPolicyList.Items {
 		// Don't treat the NetworkPolicy we create as user-created
-		if networkPolicy.Name == desired.Name && networkPolicy.Namespace == desired.Namespace {
+		if networkPolicy.Name == desired.Name {
 			continue
 		}
 
@@ -109,16 +108,11 @@ func (r *BaseIngressReconciler) reconcileNetworkPolicy(ctx context.Context, ci n
 			continue
 		}
 
-		// Treat any other NetworkPolicy we find as user-created
-		foundUserNetworkPolicy = true
-	}
-
-	// If the user has created NetworkPolicy objects in this namespace
-	// then assume they are managing NetworkPolicy and do not create
-	// our own. If we previously created one and a user starts
-	// managing NetworkPolicy explicitly then this will allow them to
-	// delete ours without us automatically recreating it again.
-	if foundUserNetworkPolicy {
+		// If the user has created NetworkPolicy objects in this namespace
+		// then assume they are managing NetworkPolicy and do not create
+		// our own. If we previously created one and a user starts
+		// managing NetworkPolicy explicitly then this will allow them to
+		// delete ours without us automatically recreating it again.
 		return nil
 	}
 
@@ -135,7 +129,7 @@ func (r *BaseIngressReconciler) ensureNetworkPolicy(ctx context.Context, ci netw
 	networkPolicy := &networkingv1.NetworkPolicy{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, networkPolicy)
 
-	if err != nil && errors.IsNotFound(err) {
+	if errors.IsNotFound(err) {
 		err = r.Client.Create(ctx, desired)
 		if err != nil {
 			logger.Errorf("Failed to create NetworkPolicy %q in namespace %q: %v", desired.Name, desired.Namespace, err)
@@ -170,7 +164,7 @@ func (r *BaseIngressReconciler) deleteNetworkPolicy(ctx context.Context, ci netw
 	networkPolicy := &networkingv1.NetworkPolicy{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, networkPolicy)
 
-	if err != nil && errors.IsNotFound(err) {
+	if errors.IsNotFound(err) {
 		// Doesn't exist, so no need to try to delete it
 		return nil
 	} else if err != nil {
