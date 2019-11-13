@@ -35,6 +35,9 @@ const (
 func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
 	logger := logging.FromContext(ctx)
 
+	if len(ci.GetFinalizers()) == 0 || ci.GetFinalizers()[0] != "ocp-ingress" {
+		return nil
+	}
 	if ci.GetDeletionTimestamp() != nil {
 		return r.reconcileDeletion(ctx, ci)
 	}
@@ -213,25 +216,22 @@ func (r *BaseIngressReconciler) reconcileDeletion(ctx context.Context, ci networ
 	// If particular namespace has only one ingress object then after deletion namespace will have empty ingress object
 	// So remove namespace from SMMR
 	if len(ingressList.Items) == 1 {
-			// In order to double check that we are reconciling proper ingress check with name and namespace
-			if ci.GetNamespace() == ingressList.Items[0].Namespace && ci.GetName() == ingressList.Items[0].Name {
-				smmr := &maistrav1.ServiceMeshMemberRoll{}
-				if err := r.Client.Get(ctx, types.NamespacedName{Name: smmrName, Namespace: smmrNamespace}, smmr); err != nil {
-					return err
-				}
-				for i, val := range smmr.Spec.Members {
-					if val == ci.GetNamespace() {
-						smmr.Spec.Members = append(smmr.Spec.Members[:i], smmr.Spec.Members[i+1:]...)
-						break
-					}
-				}
-				if err := r.Client.Update(ctx, smmr); err != nil {
-					return err
+		// In order to double check that we are reconciling proper ingress check with name and namespace
+		if ci.GetNamespace() == ingressList.Items[0].Namespace && ci.GetName() == ingressList.Items[0].Name {
+			smmr := &maistrav1.ServiceMeshMemberRoll{}
+			if err := r.Client.Get(ctx, types.NamespacedName{Name: smmrName, Namespace: smmrNamespace}, smmr); err != nil {
+				return err
+			}
+			for i, val := range smmr.Spec.Members {
+				if val == ci.GetNamespace() {
+					smmr.Spec.Members = append(smmr.Spec.Members[:i], smmr.Spec.Members[i+1:]...)
+					break
 				}
 			}
-	}
-	if len(ci.GetFinalizers()) == 0 || ci.GetFinalizers()[0] != "ocp-ingress" {
-		return nil
+			if err := r.Client.Update(ctx, smmr); err != nil {
+				return err
+			}
+		}
 	}
 	logger.Info("Removing Finalizer")
 	ci.SetFinalizers(ci.GetFinalizers()[1:])
