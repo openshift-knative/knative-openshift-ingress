@@ -25,6 +25,14 @@ type BaseIngressReconciler struct {
 	Client client.Client
 }
 
+const (
+	// Namespace knative-serving-ingress hardcoded for now.
+	// The whole component knative-openshift-ingress is going to be moved into
+	// knative-serving-networking-openshift anyway, where it will be possible to statically determine the namespace to use.
+	smmrName      = "default"
+	smmrNamespace = "knative-serving-ingress"
+)
+
 func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
 	logger := logging.FromContext(ctx)
 
@@ -34,6 +42,12 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 
 	logger.Infof("Reconciling clusterIngress :%v", ci)
 
+	// Only add Istio ingress to SMMR
+	if ci.GetAnnotations()[networking.IngressClassAnnotationKey] == network.IstioIngressClassName {
+		if err := r.reconcileSmmr(ctx, ci); err != nil {
+			return err
+		}
+	}
 	exposed := ci.GetSpec().Visibility == networkingv1alpha1.IngressVisibilityExternalIP
 	if exposed {
 		ingressLabels := ci.GetLabels()
@@ -50,13 +64,6 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 			return err
 		}
 		existingMap := routeMap(existing, selector)
-
-		// Only add Istio ingress to SMMR
-		if ci.GetAnnotations()[networking.IngressClassAnnotationKey] == network.IstioIngressClassName {
-			if err := r.reconcileSmmr(ctx, ci); err != nil {
-				return err
-			}
-		}
 
 		routes, err := resources.MakeRoutes(ci)
 		if err != nil {
@@ -189,13 +196,10 @@ func (r *BaseIngressReconciler) reconcileSmmr(ctx context.Context, ci networking
 
 	// update ServiceMeshMemberRole with the namespace info where knative routes created
 	smmr := &maistrav1.ServiceMeshMemberRoll{}
-	// Namespace knative-serving-ingress hardcoded for now.
-	// The whole component knative-openshift-ingress is going to be moved into
-	// knative-serving-networking-openshift anyway, where it will be possible to statically determine the namespace to use.
-	if err := r.Client.Get(ctx, types.NamespacedName{Name: "default", Namespace: "knative-serving-ingress"}, smmr); err != nil {
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: smmrName, Namespace: smmrNamespace}, smmr); err != nil {
 		return err
 	}
-	newMembers, changed := appendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
+	newMembers, changed := AppendIfAbsent(smmr.Spec.Members, ci.GetNamespace())
 	smmr.Spec.Members = newMembers
 
 	if changed {
@@ -295,15 +299,45 @@ func (r *BaseIngressReconciler) reconcileRoute(ctx context.Context, ci networkin
 }
 
 func (r *BaseIngressReconciler) reconcileDeletion(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
-	// TODO: something with a finalizer?  We're using owner refs for
-	// now, but really shouldn't be using owner refs from
-	// cluster-scoped ClusterIngress to a namespace-scoped K8s
-	// Service.
-	return nil
+	logger := logging.FromContext(ctx)
+
+	if len(ci.GetFinalizers()) == 0 || ci.GetFinalizers()[0] != "ocp-ingress" {
+		return nil
+	}
+	// get list of ingress object for a namespace
+	ingressList := networkingv1alpha1.IngressList{}
+	if err := r.Client.List(ctx, &client.ListOptions{
+		Namespace: ci.GetNamespace(),
+	}, &ingressList); err != nil {
+		return err
+	}
+	// If particular namespace has only one ingress object then after deletion namespace will have empty ingress object
+	// So remove namespace from SMMR
+	if len(ingressList.Items) == 1 {
+		// In order to double check that we are reconciling proper ingress check with name and namespace
+		if ci.GetNamespace() == ingressList.Items[0].Namespace && ci.GetName() == ingressList.Items[0].Name {
+			smmr := &maistrav1.ServiceMeshMemberRoll{}
+			if err := r.Client.Get(ctx, types.NamespacedName{Name: smmrName, Namespace: smmrNamespace}, smmr); err != nil {
+				return err
+			}
+			for i, val := range smmr.Spec.Members {
+				if val == ci.GetNamespace() {
+					smmr.Spec.Members = append(smmr.Spec.Members[:i], smmr.Spec.Members[i+1:]...)
+					break
+				}
+			}
+			if err := r.Client.Update(ctx, smmr); err != nil {
+				return err
+			}
+		}
+	}
+	logger.Info("Removing Finalizer")
+	ci.SetFinalizers(ci.GetFinalizers()[1:])
+	return r.Client.Update(ctx, ci)
 }
 
-// appendIfAbsent append namespace to member if its not exist
-func appendIfAbsent(members []string, routeNamespace string) ([]string, bool) {
+// AppendIfAbsent append namespace to member if its not exist
+func AppendIfAbsent(members []string, routeNamespace string) ([]string, bool) {
 	for _, val := range members {
 		if val == routeNamespace {
 			return members, false
