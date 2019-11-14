@@ -44,7 +44,6 @@ var (
 			UID:         uid,
 			Labels:      map[string]string{serving.RouteNamespaceLabelKey: namespace, serving.RouteLabelKey: name},
 			Annotations: map[string]string{networking.IngressClassAnnotationKey: network.IstioIngressClassName},
-			Finalizers:  []string{"ocp-ingress"},
 		},
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
@@ -89,35 +88,6 @@ var (
 			LoadBalancer: &networkingv1alpha1.LoadBalancerStatus{
 				Ingress: []networkingv1alpha1.LoadBalancerIngressStatus{{
 					DomainInternal: "cluster-local-gateway." + serviceMeshNamespace + ".svc.cluster.local",
-				}},
-			},
-		},
-	}
-
-	deleteIngress = &networkingv1alpha1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              name,
-			Namespace:         namespace,
-			UID:               uid,
-			Labels:            map[string]string{serving.RouteNamespaceLabelKey: namespace, serving.RouteLabelKey: name},
-			Annotations:       map[string]string{networking.IngressClassAnnotationKey: network.IstioIngressClassName},
-			DeletionTimestamp: &metav1.Time{Time: time.Now()},
-		},
-		Spec: networkingv1alpha1.IngressSpec{
-			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
-			Rules: []networkingv1alpha1.IngressRule{{
-				Hosts: []string{domainName},
-				HTTP: &networkingv1alpha1.HTTPIngressRuleValue{
-					Paths: []networkingv1alpha1.HTTPIngressPath{{
-						Timeout: &metav1.Duration{Duration: 5 * time.Second},
-					}},
-				},
-			}},
-		},
-		Status: networkingv1alpha1.IngressStatus{
-			LoadBalancer: &networkingv1alpha1.LoadBalancerStatus{
-				Ingress: []networkingv1alpha1.LoadBalancerIngressStatus{{
-					DomainInternal: "istio-ingressgateway." + serviceMeshNamespace + ".svc.cluster.local",
 				}},
 			},
 		},
@@ -273,22 +243,14 @@ func TestRouteMigration(t *testing.T) {
 		routes := routeList.Items
 		assert.ElementsMatch(t, routes, test.want)
 
-		// A ServiceMeshMemberRole resource with metadata
-		smmrDelete := &maistrav1.ServiceMeshMemberRoll{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      smmrName,
-				Namespace: serviceMeshNamespace,
-			},
+		// Deleting ingress should remove ns from smmr
+		ingress.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+		if err := cl.Update(context.TODO(), ingress); err != nil {
+			t.Fatalf("failed to update ingress: (%v)", err)
 		}
-		delIngress := deleteIngress.DeepCopy()
-		s = scheme.Scheme
-		s.AddKnownTypes(maistrav1.SchemeGroupVersion, smmrDelete)
 		s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, &networkingv1alpha1.IngressList{})
-		// Create a fake client to mock API calls.
-		clNew := fake.NewFakeClient(smmrDelete, delIngress)
-
 		// Create a Reconcile Ingress object with the scheme and fake client.
-		r = &ReconcileIngress{base: &common.BaseIngressReconciler{Client: clNew}, client: clNew, scheme: s}
+		r = &ReconcileIngress{base: &common.BaseIngressReconciler{Client: cl}, client: cl, scheme: s}
 		// Mock request to simulate Reconcile() being called on an event for a
 		// watched resource .
 		req = reconcile.Request{
@@ -300,7 +262,8 @@ func TestRouteMigration(t *testing.T) {
 		if _, err := r.Reconcile(req); err != nil {
 			t.Fatalf("reconcile: (%v)", err)
 		}
-		if err := clNew.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmrDelete); err != nil {
+		smmrDelete := &maistrav1.ServiceMeshMemberRoll{}
+		if err := cl.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmrDelete); err != nil {
 			t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
 		}
 		// Check if namespace has been removed from smmr

@@ -53,7 +53,6 @@ func TestClusterIngressController(t *testing.T) {
 			Namespace:   namespace,
 			UID:         types.UID(uid),
 			Annotations: map[string]string{networking.IngressClassAnnotationKey: network.IstioIngressClassName},
-			Finalizers:  []string{"ocp-ingress"},
 		},
 		Spec: networkingv1alpha1.IngressSpec{
 			Visibility: networkingv1alpha1.IngressVisibilityExternalIP,
