@@ -256,19 +256,19 @@ func TestRouteMigration(t *testing.T) {
 			t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
 		}
 		// Check if namespace has been removed from smmr.
-		assert.Equal(t, len([]string{}), len(smmrDelete.Spec.Members))
+		assert.Empty(t, len(smmrDelete.Spec.Members))
 
 		// check openshift routes has been removed.
 		routeListdelete := &routev1.RouteList{}
 		err = cl.List(context.TODO(), &client.ListOptions{}, routeListdelete)
 		assert.Nil(t, err)
-		assert.Equal(t, 0, len(routeListdelete.Items))
+		assert.Empty(t, routeListdelete.Items)
 
 		// check finalizers has been removed from ingress.
 		ingressListdelete := &networkingv1alpha1.IngressList{}
 		err = cl.List(context.TODO(), &client.ListOptions{}, ingressListdelete)
 		assert.Nil(t, err)
-		assert.Equal(t, 0, len(ingressListdelete.Items[0].Finalizers))
+		assert.Empty(t, len(ingressListdelete.Items[0].Finalizers))
 	})
 }
 
