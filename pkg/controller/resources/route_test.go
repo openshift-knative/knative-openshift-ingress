@@ -56,7 +56,6 @@ func TestMakeRoute(t *testing.T) {
 			),
 			want: []*routev1.Route{{
 				ObjectMeta: metav1.ObjectMeta{
-					OwnerReferences: []metav1.OwnerReference{ownerRef},
 					Labels: map[string]string{
 						networking.IngressLabelKey:     "ingress",
 						serving.RouteLabelKey:          "route1",
@@ -101,7 +100,6 @@ func TestMakeRoute(t *testing.T) {
 			),
 			want: []*routev1.Route{{
 				ObjectMeta: metav1.ObjectMeta{
-					OwnerReferences: []metav1.OwnerReference{ownerRef},
 					Labels: map[string]string{
 						networking.IngressLabelKey:     "ingress",
 						serving.RouteLabelKey:          "route1",
@@ -133,7 +131,6 @@ func TestMakeRoute(t *testing.T) {
 			)),
 			want: []*routev1.Route{{
 				ObjectMeta: metav1.ObjectMeta{
-					OwnerReferences: []metav1.OwnerReference{ownerRef},
 					Labels: map[string]string{
 						networking.IngressLabelKey:     "ingress",
 						serving.RouteLabelKey:          "route1",
@@ -157,7 +154,6 @@ func TestMakeRoute(t *testing.T) {
 				},
 			}, {
 				ObjectMeta: metav1.ObjectMeta{
-					OwnerReferences: []metav1.OwnerReference{ownerRef},
 					Labels: map[string]string{
 						networking.IngressLabelKey:     "ingress",
 						serving.RouteLabelKey:          "route1",
@@ -189,7 +185,6 @@ func TestMakeRoute(t *testing.T) {
 			)),
 			want: []*routev1.Route{{
 				ObjectMeta: metav1.ObjectMeta{
-					OwnerReferences: []metav1.OwnerReference{ownerRef},
 					Labels: map[string]string{
 						networking.IngressLabelKey:     "ingress",
 						serving.RouteLabelKey:          "route1",
@@ -227,7 +222,6 @@ func TestMakeRoute(t *testing.T) {
 			),
 			want: []*routev1.Route{{
 				ObjectMeta: metav1.ObjectMeta{
-					OwnerReferences: []metav1.OwnerReference{ownerRef},
 					Labels: map[string]string{
 						networking.IngressLabelKey:     "ingress",
 						serving.RouteLabelKey:          "route1",
