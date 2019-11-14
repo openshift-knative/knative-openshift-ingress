@@ -98,7 +98,7 @@ func TestClusterLocalSvc(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 	ingress := defaultIngressForClusterLocal.DeepCopy()
 
-	// A ServiceMeshMemberRole resource with metadata
+	// A ServiceMeshMemberRole resource with metadata.
 	smmr := &maistrav1.ServiceMeshMemberRoll{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      smmrName,
@@ -128,7 +128,7 @@ func TestClusterLocalSvc(t *testing.T) {
 	if _, err := r.Reconcile(req); err != nil {
 		t.Fatalf("reconcile: (%v)", err)
 	}
-	// Check if namespace has been added to smmr
+	// Check if namespace has been added to smmr.
 	if err := cl.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmr); err != nil {
 		t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
 	}
@@ -230,7 +230,7 @@ func TestRouteMigration(t *testing.T) {
 		if _, err := r.Reconcile(req); err != nil {
 			t.Fatalf("reconcile: (%v)", err)
 		}
-		// Check if namespace has been added to smmr
+		// Check if namespace has been added to smmr.
 		if err := cl.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmr); err != nil {
 			t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
 		}
@@ -242,6 +242,23 @@ func TestRouteMigration(t *testing.T) {
 
 		routes := routeList.Items
 		assert.ElementsMatch(t, routes, test.want)
+
+		// Deleting ingress should remove ns from smmr.
+		// Updating ingress with DeletionTimestamp instead of cl.Delete because delete operation doesn't handle finalizers properly.
+		ingress.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+		if err := cl.Update(context.TODO(), ingress); err != nil {
+			t.Fatalf("failed to update ingress: (%v)", err)
+		}
+		s.AddKnownTypes(networkingv1alpha1.SchemeGroupVersion, &networkingv1alpha1.IngressList{})
+		if _, err := r.Reconcile(req); err != nil {
+			t.Fatalf("reconcile: (%v)", err)
+		}
+		smmrDelete := &maistrav1.ServiceMeshMemberRoll{}
+		if err := cl.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmrDelete); err != nil {
+			t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
+		}
+		// Check if namespace has been removed from smmr.
+		assert.Equal(t, len([]string{}), len(smmrDelete.Spec.Members))
 	})
 }
 
@@ -308,7 +325,7 @@ func TestIngressController(t *testing.T) {
 			// route object
 			route := &routev1.Route{}
 
-			// A ServiceMeshMemberRole resource with metadata
+			// A ServiceMeshMemberRole resource with metadata.
 			smmr := &maistrav1.ServiceMeshMemberRoll{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      smmrName,
@@ -339,7 +356,7 @@ func TestIngressController(t *testing.T) {
 				t.Fatalf("reconcile: (%v)", err)
 			}
 
-			// Check if namespace has been added to smmr
+			// Check if namespace has been added to smmr.
 			if err := cl.Get(context.TODO(), types.NamespacedName{Name: smmrName, Namespace: serviceMeshNamespace}, smmr); err != nil {
 				t.Fatalf("failed to get ServiceMeshMemberRole: (%v)", err)
 			}
@@ -348,7 +365,7 @@ func TestIngressController(t *testing.T) {
 			} else {
 				assert.Equal(t, 0, len(smmr.Spec.Members))
 			}
-			// Check if route has been created
+			// Check if route has been created.
 			routes := &routev1.Route{}
 			err := cl.Get(context.TODO(), types.NamespacedName{Name: routeName0, Namespace: serviceMeshNamespace}, routes)
 
