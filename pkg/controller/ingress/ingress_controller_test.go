@@ -276,6 +276,7 @@ func TestIngressController(t *testing.T) {
 		wantRouteErr      func(err error) bool
 		wantSmmr          bool
 		wantNetworkPolicy bool
+		deleted           bool
 		extraObjs         []runtime.Object
 	}{
 		{
@@ -285,6 +286,7 @@ func TestIngressController(t *testing.T) {
 			wantRouteErr:      func(err error) bool { return err == nil },
 			wantSmmr:          true,
 			wantNetworkPolicy: true,
+			deleted:           false,
 		},
 		{
 			name:              "reconcile route with taking over annotations",
@@ -293,6 +295,7 @@ func TestIngressController(t *testing.T) {
 			wantRouteErr:      func(err error) bool { return err == nil },
 			wantSmmr:          true,
 			wantNetworkPolicy: true,
+			deleted:           false,
 		},
 		{
 			name:              "do not reconcile with disable route annotation",
@@ -301,6 +304,7 @@ func TestIngressController(t *testing.T) {
 			wantRouteErr:      errors.IsNotFound,
 			wantSmmr:          true,
 			wantNetworkPolicy: true,
+			deleted:           false,
 		},
 		{
 			name:              "reconcile route with passthrough annotation",
@@ -309,6 +313,7 @@ func TestIngressController(t *testing.T) {
 			wantRouteErr:      func(err error) bool { return err == nil },
 			wantSmmr:          true,
 			wantNetworkPolicy: true,
+			deleted:           false,
 		},
 		{
 			name:              "reconcile route with invalid TLS termination annotation",
@@ -317,6 +322,7 @@ func TestIngressController(t *testing.T) {
 			wantRouteErr:      errors.IsNotFound,
 			wantSmmr:          true,
 			wantNetworkPolicy: true,
+			deleted:           false,
 		},
 		{
 			name:              "reconcile route with different ingress annotation",
@@ -325,6 +331,7 @@ func TestIngressController(t *testing.T) {
 			wantRouteErr:      func(err error) bool { return err == nil },
 			wantSmmr:          false,
 			wantNetworkPolicy: false,
+			deleted:           false,
 		},
 		{
 			name:              "reconcile with existing managed NetworkPolicy",
@@ -333,6 +340,7 @@ func TestIngressController(t *testing.T) {
 			wantRouteErr:      func(err error) bool { return err == nil },
 			wantSmmr:          true,
 			wantNetworkPolicy: true,
+			deleted:           false,
 			extraObjs: []runtime.Object{
 				&networkingv1.NetworkPolicy{
 					ObjectMeta: metav1.ObjectMeta{
@@ -350,6 +358,7 @@ func TestIngressController(t *testing.T) {
 			wantRouteErr:      func(err error) bool { return err == nil },
 			wantSmmr:          true,
 			wantNetworkPolicy: true,
+			deleted:           false,
 			extraObjs: []runtime.Object{
 				&networkingv1.NetworkPolicy{
 					ObjectMeta: metav1.ObjectMeta{
@@ -368,6 +377,7 @@ func TestIngressController(t *testing.T) {
 			wantRouteErr:      func(err error) bool { return err == nil },
 			wantSmmr:          true,
 			wantNetworkPolicy: true,
+			deleted:           false,
 			extraObjs: []runtime.Object{
 				&networkingv1.NetworkPolicy{
 					ObjectMeta: metav1.ObjectMeta{
@@ -393,6 +403,7 @@ func TestIngressController(t *testing.T) {
 			wantRouteErr:      func(err error) bool { return err == nil },
 			wantSmmr:          true,
 			wantNetworkPolicy: false,
+			deleted:           false,
 			extraObjs: []runtime.Object{
 				&networkingv1.NetworkPolicy{
 					ObjectMeta: metav1.ObjectMeta{
@@ -410,6 +421,113 @@ func TestIngressController(t *testing.T) {
 			wantRouteErr:      func(err error) bool { return err == nil },
 			wantSmmr:          true,
 			wantNetworkPolicy: true,
+			deleted:           false,
+			extraObjs: []runtime.Object{
+				&networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "my-network-policy",
+						Namespace: namespace,
+					},
+					Spec: networkingv1.NetworkPolicySpec{},
+				},
+				&networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      resources.NetworkPolicyAllowAllName,
+						Namespace: namespace,
+					},
+					Spec: networkingv1.NetworkPolicySpec{},
+				},
+			},
+		},
+		{
+			name:              "reconcile deletion with existing managed NetworkPolicy",
+			annotations:       map[string]string{},
+			want:              map[string]string(nil),
+			wantRouteErr:      errors.IsNotFound,
+			wantSmmr:          false,
+			wantNetworkPolicy: false,
+			deleted:           true,
+			extraObjs: []runtime.Object{
+				&networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      resources.NetworkPolicyAllowAllName,
+						Namespace: namespace,
+					},
+					Spec: networkingv1.NetworkPolicySpec{},
+				},
+			},
+		},
+		{
+			name:              "reconcile deletion with existing istio-mesh NetworkPolicy",
+			annotations:       map[string]string{},
+			want:              map[string]string(nil),
+			wantRouteErr:      errors.IsNotFound,
+			wantSmmr:          false,
+			wantNetworkPolicy: false,
+			deleted:           true,
+			extraObjs: []runtime.Object{
+				&networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "istio-mesh",
+						Namespace: namespace,
+						Labels:    map[string]string{"maistra.io/owner": "knative-serving-ingress"},
+					},
+					Spec: networkingv1.NetworkPolicySpec{},
+				},
+			},
+		},
+		{
+			name:              "reconcile deletion with existing managed and istio-mesh NetworkPolicies",
+			annotations:       map[string]string{},
+			want:              map[string]string(nil),
+			wantRouteErr:      errors.IsNotFound,
+			wantSmmr:          false,
+			wantNetworkPolicy: false,
+			deleted:           true,
+			extraObjs: []runtime.Object{
+				&networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      resources.NetworkPolicyAllowAllName,
+						Namespace: namespace,
+					},
+					Spec: networkingv1.NetworkPolicySpec{},
+				},
+				&networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "istio-mesh",
+						Namespace: namespace,
+						Labels:    map[string]string{"maistra.io/owner": "knative-serving-ingress"},
+					},
+					Spec: networkingv1.NetworkPolicySpec{},
+				},
+			},
+		},
+		{
+			name:              "reconcile deletion with user-added NetworkPolicy",
+			annotations:       map[string]string{},
+			want:              map[string]string(nil),
+			wantRouteErr:      errors.IsNotFound,
+			wantSmmr:          false,
+			wantNetworkPolicy: false,
+			deleted:           true,
+			extraObjs: []runtime.Object{
+				&networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "my-network-policy",
+						Namespace: namespace,
+					},
+					Spec: networkingv1.NetworkPolicySpec{},
+				},
+			},
+		},
+		{
+			name:              "reconcile deletion with existing managed and user-added NetworkPolicies",
+			annotations:       map[string]string{},
+			want:              map[string]string(nil),
+			wantRouteErr:      errors.IsNotFound,
+			wantSmmr:          false,
+			wantNetworkPolicy: true,
+			deleted:           true,
 			extraObjs: []runtime.Object{
 				&networkingv1.NetworkPolicy{
 					ObjectMeta: metav1.ObjectMeta{
@@ -439,6 +557,11 @@ func TestIngressController(t *testing.T) {
 				annotations[k] = v
 			}
 			ingress.SetAnnotations(annotations)
+
+			if test.deleted {
+				deletedTime := metav1.Now()
+				ingress.SetDeletionTimestamp(&deletedTime)
+			}
 
 			// route object
 			route := &routev1.Route{}

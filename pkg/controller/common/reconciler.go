@@ -95,7 +95,7 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 	return nil
 }
 
-func (r *BaseIngressReconciler) reconcileNetworkPolicy(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
+func (r *BaseIngressReconciler) reconcileNetworkPolicy(ctx context.Context, ci networkingv1alpha1.IngressAccessor, isDeletion bool) error {
 	desired := resources.MakeNetworkPolicyAllowAll(ci.GetNamespace())
 
 	var networkPolicyList networkingv1.NetworkPolicyList
@@ -115,16 +115,23 @@ func (r *BaseIngressReconciler) reconcileNetworkPolicy(ctx context.Context, ci n
 			continue
 		}
 
-		// If the user has created NetworkPolicy objects in this namespace
-		// then assume they are managing NetworkPolicy and do not create
-		// our own. If we previously created one and a user starts
-		// managing NetworkPolicy explicitly then this will allow them to
-		// delete ours without us automatically recreating it again.
+		// If the user has created NetworkPolicy objects in this
+		// namespace then assume they are managing NetworkPolicy and
+		// do not create or delete our own. If we previously created
+		// one and a user starts managing NetworkPolicy explicitly
+		// then this will allow them to delete ours without us
+		// automatically recreating it again.
 		return nil
 	}
 
-	if err := r.ensureNetworkPolicy(ctx, ci, desired); err != nil {
-		return err
+	if isDeletion {
+		if err := r.deleteNetworkPolicy(ctx, ci, desired); err != nil {
+			return err
+		}
+	} else {
+		if err := r.ensureNetworkPolicy(ctx, ci, desired); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -158,13 +165,6 @@ func (r *BaseIngressReconciler) ensureNetworkPolicy(ctx context.Context, ci netw
 	return nil
 }
 
-// TODO: This is just stubbed in because I don't know when to call
-// it. We should delete this NetworkPolicy when deleting this
-// namespace out of the SMMR, I think?
-//
-// Or, should we never delete it? Because once we create it, the user
-// may accidentally depend on its allow-all behavior in this
-// namespace.
 func (r *BaseIngressReconciler) deleteNetworkPolicy(ctx context.Context, ci networkingv1alpha1.IngressAccessor, desired *networkingv1.NetworkPolicy) error {
 	logger := logging.FromContext(ctx)
 
@@ -190,7 +190,7 @@ func (r *BaseIngressReconciler) deleteNetworkPolicy(ctx context.Context, ci netw
 func (r *BaseIngressReconciler) reconcileSmmr(ctx context.Context, ci networkingv1alpha1.IngressAccessor) error {
 	logger := logging.FromContext(ctx)
 
-	if err := r.reconcileNetworkPolicy(ctx, ci); err != nil {
+	if err := r.reconcileNetworkPolicy(ctx, ci, false); err != nil {
 		return err
 	}
 
@@ -327,6 +327,10 @@ func (r *BaseIngressReconciler) reconcileDeletion(ctx context.Context, ci networ
 				}
 			}
 			if err := r.Client.Update(ctx, smmr); err != nil {
+				return err
+			}
+
+			if err := r.reconcileNetworkPolicy(ctx, ci, true); err != nil {
 				return err
 			}
 		}
