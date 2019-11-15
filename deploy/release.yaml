@@ -39,6 +39,12 @@ rules:
   verbs:
   - "*"
 - apiGroups:
+  - networking.k8s.io
+  resources:
+  - networkpolicies
+  verbs:
+  - "*"
+- apiGroups:
   - monitoring.coreos.com
   resources:
   - servicemonitors
@@ -70,11 +76,11 @@ rules:
   verbs:
   - '*'
 - apiGroups:
-    - maistra.io
+  - maistra.io
   resources:
-    - servicemeshmemberrolls
+  - servicemeshmemberrolls
   verbs:
-    - '*'
+  - '*'
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
