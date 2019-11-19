@@ -155,6 +155,13 @@ func TestRouteMigration(t *testing.T) {
 			Spec: routev1.RouteSpec{Host: domainName},
 		}, {
 			ObjectMeta: metav1.ObjectMeta{
+				Name:      routeName0,
+				Namespace: "istio-system",
+				Labels:    map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name, serving.RouteNamespaceLabelKey: namespace},
+			},
+			Spec: routev1.RouteSpec{Host: domainName},
+		}, {
+			ObjectMeta: metav1.ObjectMeta{
 				Name:   "no-remove-missing-label",
 				Labels: map[string]string{networking.IngressLabelKey: name, serving.RouteLabelKey: name},
 			},

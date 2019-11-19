@@ -76,7 +76,7 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 			if err := r.reconcileRoute(ctx, ci, route); err != nil {
 				return fmt.Errorf("failed to create route for host %s: %v", route.Spec.Host, err)
 			}
-			delete(existingMap, route.Name)
+			delete(existingMap, route.Namespace+"/"+route.Name)
 		}
 		// If routes remains in existingMap, it must be obsoleted routes. Clean them up.
 		for _, rt := range existingMap {
@@ -222,7 +222,7 @@ func routeMap(routes routev1.RouteList, selector map[string]string) map[string]r
 		// and we can't bump the osdk version quickly. ref:
 		// https://github.com/openshift-knative/knative-openshift-ingress/pull/24#discussion_r341804021
 		if routeLabelFilter(route, selector) {
-			mp[route.Name] = route
+			mp[route.Namespace+"/"+route.Name] = route
 		}
 	}
 	return mp
