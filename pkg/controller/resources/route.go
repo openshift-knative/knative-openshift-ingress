@@ -152,13 +152,12 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, client client.Client, host
 			TLS: &routev1.TLSConfig{
 				Certificate:                   string(secret.Data["tls.crt"]),
 				Key:                           string(secret.Data["tls.key"]),
-				CACertificate:                 string(secret.Data["caCertificate"]),
+				CACertificate:                 string(secret.Data["ca.crt"]),
 				Termination:                   routev1.TLSTerminationEdge,
 				InsecureEdgeTerminationPolicy: routev1.InsecureEdgeTerminationPolicyAllow,
 			},
 		},
 	}
-
 	return route, nil
 }
 
