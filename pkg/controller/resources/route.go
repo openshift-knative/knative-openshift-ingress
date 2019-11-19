@@ -1,23 +1,28 @@
 package resources
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strings"
 
 	routev1 "github.com/openshift/api/route/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"knative.dev/pkg/kmeta"
 	"knative.dev/serving/pkg/apis/networking"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"knative.dev/serving/pkg/apis/serving"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
 	TimeoutAnnotation      = "haproxy.router.openshift.io/timeout"
 	DisableRouteAnnotation = "serving.knative.openshift.io/disableRoute"
+	CertificateAnnotation  = "serving.knative.openshift.io/certificate"
 )
 
 // ErrNoValidLoadbalancerDomain indicates that the current ingress does not have a DomainInternal field, or
@@ -25,7 +30,7 @@ const (
 var ErrNoValidLoadbalancerDomain = errors.New("unable to find ClusterIngress LoadBalancer with DomainInternal set")
 
 // MakeRoutes creates OpenShift Routes from a Knative Ingress
-func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error) {
+func MakeRoutes(ci networkingv1alpha1.IngressAccessor, client client.Client) ([]*routev1.Route, error) {
 	routes := []*routev1.Route{}
 
 	// Skip all route creation for cluster-local ingresses.
@@ -42,7 +47,7 @@ func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error)
 			// point.
 			parts := strings.Split(host, ".")
 			if len(parts) > 2 && parts[2] != "svc" {
-				route, err := makeRoute(ci, host, rule)
+				route, err := makeRoute(ci, client, host, rule)
 				if err != nil {
 					return nil, err
 				}
@@ -57,7 +62,7 @@ func MakeRoutes(ci networkingv1alpha1.IngressAccessor) ([]*routev1.Route, error)
 	return routes, nil
 }
 
-func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, rule networkingv1alpha1.IngressRule) (*routev1.Route, error) {
+func makeRoute(ci networkingv1alpha1.IngressAccessor, client client.Client, host string, rule networkingv1alpha1.IngressRule) (*routev1.Route, error) {
 	// Take over annotaitons from ingress.
 	annotations := ci.GetAnnotations()
 	if annotations == nil {
@@ -119,6 +124,14 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, rule networki
 		return nil, ErrNoValidLoadbalancerDomain
 	}
 
+	secret := &corev1.Secret{}
+	if cert, ok := annotations[CertificateAnnotation]; ok {
+		err := client.Get(context.TODO(), types.NamespacedName{Namespace: ci.GetNamespace(), Name: cert}, secret)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	route := &routev1.Route{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
@@ -137,11 +150,15 @@ func makeRoute(ci networkingv1alpha1.IngressAccessor, host string, rule networki
 				Name: serviceName,
 			},
 			TLS: &routev1.TLSConfig{
+				Certificate:                   string(secret.Data["tls.crt"]),
+				Key:                           string(secret.Data["tls.key"]),
+				CACertificate:                 string(secret.Data["caCertificate"]),
 				Termination:                   routev1.TLSTerminationEdge,
 				InsecureEdgeTerminationPolicy: routev1.InsecureEdgeTerminationPolicyAllow,
 			},
 		},
 	}
+
 	return route, nil
 }
 
