@@ -10,6 +10,7 @@ import (
 	"github.com/openshift-knative/knative-openshift-ingress/pkg/controller/resources"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,6 +37,7 @@ const (
 	uid                  = "8a7e9a9d-fbc6-11e9-a88e-0261aff8d6d8"
 	domainName           = name + "." + namespace + ".default.domainName"
 	routeName0           = "route-" + uid + "-336636653035"
+	testSecretName       = "testSecret"
 )
 
 var (
@@ -92,6 +94,12 @@ var (
 					DomainInternal: "cluster-local-gateway." + serviceMeshNamespace + ".svc.cluster.local",
 				}},
 			},
+		},
+	}
+	defaultSecret = &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testSecretName,
+			Namespace: namespace,
 		},
 	}
 )
@@ -531,6 +539,15 @@ func TestIngressController(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:              "reconcile route with custom certificate by annotation",
+			annotations:       map[string]string{resources.CertificateAnnotation: testSecretName},
+			want:              map[string]string{resources.CertificateAnnotation: testSecretName, resources.TimeoutAnnotation: "5s", networking.IngressClassAnnotationKey: network.IstioIngressClassName},
+			wantRouteErr:      func(err error) bool { return err == nil },
+			wantSmmr:          true,
+			wantNetworkPolicy: true,
+			deleted:           false,
+		},
 	}
 
 	for _, test := range tests {
@@ -560,7 +577,7 @@ func TestIngressController(t *testing.T) {
 				},
 			}
 
-			initObjs := []runtime.Object{smmr, ingress, route}
+			initObjs := []runtime.Object{smmr, ingress, route, defaultSecret}
 			initObjs = append(initObjs, test.extraObjs...)
 
 			// Register operator types with the runtime scheme.

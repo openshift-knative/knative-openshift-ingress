@@ -65,7 +65,7 @@ func (r *BaseIngressReconciler) ReconcileIngress(ctx context.Context, ci network
 		}
 		existingMap := routeMap(existing, selector)
 
-		routes, err := resources.MakeRoutes(ci)
+		routes, err := resources.MakeRoutes(ci, r.Client)
 		if err != nil {
 			logger.Warnf("Failed to generate routes from ingress %v", err)
 			// Returning nil aborts the reconcilation. It will be retriggered once the status of the ingress changes.
