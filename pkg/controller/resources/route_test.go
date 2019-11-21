@@ -13,7 +13,6 @@ import (
 	"knative.dev/serving/pkg/apis/networking"
 	networkingv1alpha1 "knative.dev/serving/pkg/apis/networking/v1alpha1"
 	"knative.dev/serving/pkg/apis/serving"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 const (
@@ -244,11 +243,10 @@ func TestMakeRoute(t *testing.T) {
 			wantErr: ErrNoValidLoadbalancerDomain,
 		},
 	}
-	fakeClient := fake.NewFakeClient()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			routes, err := MakeRoutes(test.ingress, fakeClient)
+			routes, err := MakeRoutes(test.ingress)
 			if test.want != nil && !cmp.Equal(routes, test.want) {
 				t.Errorf("got = %v, want: %v, diff: %s", routes, test.want, cmp.Diff(routes, test.want))
 			}
